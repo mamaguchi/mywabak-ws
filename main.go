@@ -14,7 +14,7 @@ func main() {
 	defer db.Close()
 
 	/* HANDLER FUNC */
-	// Test
+	// myWabak
 	http.HandleFunc("/poscases", mywabak.GetPosCasesPCRHandler)
 	http.HandleFunc("/closecontacts", mywabak.GetCloseContactsHandler)
 	http.HandleFunc("/people/get", mywabak.GetPeopleBasicHandler)

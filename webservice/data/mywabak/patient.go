@@ -85,8 +85,8 @@ func GetPosCasesPCR(conn *pgxpool.Pool, casename string) ([]byte, error) {
 			   on p.ident = s.peopleident
 		 where c.name=$1
 		   and s.wbkcaseid = c.id
-		   and s.samplingres::text = 'positive'
-           and s.samplingtype::text = 'rtpcr'`
+		   and s.samplingres::text = 'Positive'
+           and s.samplingtype::text = 'RT-PCR'`
 
 	rows, err := conn.Query(context.Background(), sql, casename)
 	if err != nil {
@@ -143,6 +143,9 @@ func GetPosCasesPCRHandler(w http.ResponseWriter, r *http.Request) {
     fmt.Fprintf(w, "%s", posCasesJson)
 }
 
+// This function return all close contacts in a case,
+// whose PCR is negative.
+// Close contacts whose PCR is positive are excluded.
 func GetCloseContacts(conn *pgxpool.Pool, casename string) ([]byte, error) {
 	sql :=
 		`select p.name
@@ -156,11 +159,11 @@ func GetCloseContacts(conn *pgxpool.Pool, casename string) ([]byte, error) {
 		 where c.name=$1
 		   and s.wbkcaseid = c.id
 		   and 
-             (s.samplingres::text != 'positive'
+             (s.samplingres::text != 'Positive'
              or 
-             (s.samplingres::text = 'positive'
+             (s.samplingres::text = 'Positive'
                and 
-             s.samplingtype::text != 'rtpcr'))`
+             s.samplingtype::text != 'RT-PCR'))`
 
 	rows, err := conn.Query(context.Background(), sql, casename)
 	if err != nil {
@@ -394,7 +397,10 @@ func DelPeopleFromWbkcase(conn *pgxpool.Pool, wbkc Wbkcase) error {
              from wbk.wbkcase c
              where c.name=$1
          )
-         and peopleident=$2`    
+         and peopleident=$2
+         and (select 1
+              from wbk.wbkcase_people cp
+              where cp.contactto=$2) is null`    
 
     _, err := conn.Exec(context.Background(), sql, 
         wbkc.Name, wbkc.Peopleident)

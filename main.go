@@ -26,6 +26,15 @@ func main() {
 	http.HandleFunc("/hso/add", mywabak.AddNewHSOHandler)
 	http.HandleFunc("/hso/update", mywabak.UpdateHSOHandler)
 	http.HandleFunc("/hso/del", mywabak.DelHSOHandler)
+	// ACD
+	http.HandleFunc("/acd/rumah/get", mywabak.GetLawatanRumahHandler)
+	http.HandleFunc("/acd/rumah/upsert", mywabak.UpsertLawatanRumahHandler)
+	http.HandleFunc("/acd/saringan/get/kategorikes", mywabak.GetKategoriKesSaringanHandler)
+	http.HandleFunc("/acd/saringan/add", mywabak.AddSaringanHandler)
+	http.HandleFunc("/acd/saringan/peoples/get", mywabak.GetSaringanHandler)
+	http.HandleFunc("/acd/saringan/people/update", mywabak.UpdateACDPeopleHandler)
+	http.HandleFunc("/acd/saringan/acdactivity/update", mywabak.UpdateAcdactivityHandler)
+	http.HandleFunc("/acd/saringan/sampel/update", mywabak.UpdateSampelHandler)
 	// Auth
 	http.HandleFunc("/signup", auth.SignUpPeopleHandler)
 	http.HandleFunc("/signin", auth.BindHandler)

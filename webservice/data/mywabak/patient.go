@@ -49,7 +49,7 @@ type People struct {
     District string       `json:"district"`
     Locality string       `json:"locality"`
     Occupation string     `json:"occupation"`
-    Isgovemp bool         `json:"isgovemp"`
+    Comorbid []string     `json:"comorbid"`
 }
 
 type PosCases struct {
@@ -442,23 +442,60 @@ func DelPeopleFromWbkcaseHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AddNewPeople(conn *pgxpool.Pool, p People) error {
+    // sql :=
+	// 		`insert into acd.house
+	// 		(
+	// 			tarikhacd, locality, district, state,
+	// 			bilrumahk
+	// 		)
+	// 		values
+	// 		(
+	// 			$1, $2, $3, $4, $5
+	// 		) 
+	// 		on conflict on constraint house_tarikhacd_locality_key
+	// 		do 
+	// 			update set bilrumahk=house.bilrumahk+1
+	// 			where house.tarikhacd=$1
+	// 			and house.locality=$2
+	// 			and house.district=$3
+	// 			and house.state=$4`
+    
+    // sql := 
+    //     `insert into wbk.people
+    //     (
+    //         ident, name, gender, dob, nationality, race, tel,
+    //         address, state, district, locality, occupation
+            
+    //     )
+    //     values
+    //     (
+    //         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 
+    //         $11, $12
+    //     )`
+
     sql := 
         `insert into wbk.people
         (
             ident, name, gender, dob, nationality, race, tel,
-            address, state, district, locality, occupation,
-            isgovemp
+            address, state, district, locality, occupation
+            
         )
         values
         (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 
-            $11, $12, $13
-        )`
+            $11, $12
+        )
+        on conflict on constraint people_ident_key
+			do 
+				update set name=$2, gender=$3, dob=$4, nationality=$5,
+                  race=$6, tel=$7, address=$8, state=$9, district=$10,
+                  locality=$11, occupation=$12
+				where people.ident=$1`
         
     _, err := conn.Exec(context.Background(), sql, 
         p.Ident, p.Name, p.Gender, p.Dob, p.Nationality, 
         p.Race, p.Tel, p.Address, p.State, p.District, 
-        p.Locality, p.Occupation, p.Isgovemp)
+        p.Locality, p.Occupation)
     if err != nil {
         return err
     }
@@ -497,13 +534,13 @@ func UpdatePeople(conn *pgxpool.Pool, p People) error {
         `update wbk.people
            set name=$1, gender=$2, dob=$3, nationality=$4, 
              race=$5, tel=$6, address=$7, state=$8, district=$9,
-             locality=$10, occupation=$11, isgovemp=$12
-           where ident=$13`
+             locality=$10, occupation=$11
+           where ident=$12`
 
     _, err := conn.Exec(context.Background(), sql,
         p.Name, p.Gender, p.Dob, p.Nationality, p.Race,
         p.Tel, p.Address, p.State, p.District, p.Locality,
-        p.Occupation, p.Isgovemp, p.Ident)                         
+        p.Occupation, p.Ident)                         
     if err != nil {
         return err
     }

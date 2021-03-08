@@ -16,9 +16,9 @@ func main() {
 	/* HANDLER FUNC */
 	// myWabak
 	http.HandleFunc("/poscases", mywabak.GetPosCasesPCRHandler)
-	http.HandleFunc("/closecontacts", mywabak.GetCloseContactsHandler)
+	http.HandleFunc("/cc/get", mywabak.GetCloseContactsHandler)
 	http.HandleFunc("/people/get", mywabak.GetPeopleBasicHandler)
-	http.HandleFunc("/people/add", mywabak.AddNewPeopleHandler)
+	http.HandleFunc("/people/upsert", mywabak.UpsertPeopleHandler)
 	http.HandleFunc("/people/update", mywabak.UpdatePeopleHandler)
 	http.HandleFunc("/wbkcase/people/add", mywabak.AddPeopleToWbkcaseHandler)
 	http.HandleFunc("/wbkcase/people/update", mywabak.UpdatePeopleInWbkcaseHandler)
@@ -33,8 +33,11 @@ func main() {
 	http.HandleFunc("/acd/saringan/add", mywabak.AddSaringanHandler)
 	http.HandleFunc("/acd/saringan/peoples/get", mywabak.GetSaringanHandler)
 	http.HandleFunc("/acd/saringan/people/update", mywabak.UpdateACDPeopleHandler)
-	http.HandleFunc("/acd/saringan/acdactivity/update", mywabak.UpdateAcdactivityHandler)
+	http.HandleFunc("/acd/saringan/people/updateoc", mywabak.UpdateACDPeopleOneColHandler)
+	http.HandleFunc("/acd/saringan/acdactivity/update", mywabak.UpdateACDactivityHandler)
+	http.HandleFunc("/acd/saringan/acdactivity/updateoc", mywabak.UpdateACDactivityOneColHandler)
 	http.HandleFunc("/acd/saringan/sampel/update", mywabak.UpdateSampelHandler)
+	http.HandleFunc("/acd/saringan/sampel/updateoc", mywabak.UpdateSampelOneColHandler)
 	// Auth
 	http.HandleFunc("/signup", auth.SignUpPeopleHandler)
 	http.HandleFunc("/signin", auth.BindHandler)

@@ -57,7 +57,7 @@ type PosCases struct {
 }
 
 type CloseContacts struct {
-	Peoples []People 	`json:"peoples"`
+	Peoples []People 	`json:"cc"`
 }
 
 type HSO struct {
@@ -148,7 +148,7 @@ func GetPosCasesPCRHandler(w http.ResponseWriter, r *http.Request) {
 // Close contacts whose PCR is positive are excluded.
 func GetCloseContacts(conn *pgxpool.Pool, casename string) ([]byte, error) {
 	sql :=
-		`select p.name
+		`select p.name, p.ident
 		 from wbk.wbkcase c
 		     join wbk.wbkcase_people cp
 			   on c.id = cp.wbkcaseid
@@ -167,19 +167,27 @@ func GetCloseContacts(conn *pgxpool.Pool, casename string) ([]byte, error) {
 
 	rows, err := conn.Query(context.Background(), sql, casename)
 	if err != nil {
+        if err == pgx.ErrNoRows {
+            log.Print("CC not found in database")
+            var noCC CloseContacts
+            outputJson, err := json.MarshalIndent(noCC, "", "")            
+            return outputJson, err
+        }
 		return nil, err
 	}
 
 	var closeContacts CloseContacts
 	for rows.Next() {
 		var name string
+        var ident string
 
-		err = rows.Scan(&name)
+		err = rows.Scan(&name, &ident)
 		if err != nil {
 			return nil, err
 		}
 		closeContact := People{
 			Name: name,
+            Ident: ident,
 		}
 		closeContacts.Peoples = append(closeContacts.Peoples, closeContact)
 	}
@@ -209,10 +217,7 @@ func GetCloseContactsHandler(w http.ResponseWriter, r *http.Request) {
     
     db.CheckDbConn()
     closeContactsJson, err := GetCloseContacts(db.Conn, wbkcase.Name)
-    if err != nil {
-        if err == pgx.ErrNoRows {
-            log.Print("Positive cases not found in database")
-        }
+    if err != nil {        
         util.SendInternalServerErrorStatus(w, err)
         return 
     }
@@ -441,7 +446,7 @@ func DelPeopleFromWbkcaseHandler(w http.ResponseWriter, r *http.Request) {
     }    
 }
 
-func AddNewPeople(conn *pgxpool.Pool, p People) error {
+func UpsertPeople(conn *pgxpool.Pool, p People) error {
     // sql :=
 	// 		`insert into acd.house
 	// 		(
@@ -502,10 +507,10 @@ func AddNewPeople(conn *pgxpool.Pool, p People) error {
     return nil
 }
 
-func AddNewPeopleHandler(w http.ResponseWriter, r *http.Request) {
+func UpsertPeopleHandler(w http.ResponseWriter, r *http.Request) {
     util.SetDefaultHeader(w)
     if (r.Method == "OPTIONS") { return }
-    fmt.Println("[AddNewPeopleHandler] request received")    
+    fmt.Println("[UpsertPeopleHandler] request received")    
 
     // VERIFY AUTH TOKEN
     // authToken := strings.Split(r.Header.Get("Authorization"), " ")[1]
@@ -522,7 +527,7 @@ func AddNewPeopleHandler(w http.ResponseWriter, r *http.Request) {
     }
     
     db.CheckDbConn()
-    err = AddNewPeople(db.Conn, p)
+    err = UpsertPeople(db.Conn, p)
     if err != nil {                        
         util.SendInternalServerErrorStatus(w, err)
         return 

@@ -26,6 +26,13 @@ type LawatanRumah struct {
 	Bilrumahp int 			`json:"bilrumahp"`
 }
 
+type ACDActivityOneCol struct {
+	TarikhACD string 		`json:"tarikhACD"`
+	Ident string 			`json:"ident"`
+	Col string 				`json:"col"`
+	Val interface{}			`json:"val"`
+}
+
 type ACDActivity struct {
 	TarikhACD string 		`json:"tarikhACD"`
 	Peopleident string 		`json:"peopleident"`
@@ -36,13 +43,26 @@ type ACDActivity struct {
 	Gejala string 			`json:"gejala"`
 }
 
+type SampelOneCol struct {
+	Ident string 			`json:"ident"`
+	Col string 				`json:"col"`
+	Val interface{}			`json:"val"`
+}
+
 type Sampel struct {
 	Peopleident string 		`json:"peopleident"`
 	Jenissampel string 		`json:"jenissampel"`
 	Sampeltca string 		`json:"sampeltca"`
-	Sampeldiambil string 	`json:"sampeldiambil"`
 	Bildipanggil int 		`json:"bildipanggil"`
+	// Sampeldiambil string 	`json:"sampeldiambil"`
+	Sampeldiambil bool      `json:"sampeldiambil"`
 	Sampelres string 		`json:"sampelres"`
+}
+
+type ACDPeopleOneCol struct {
+	Ident string 			`json:"ident"`
+	Col string 				`json:"col"`
+	Val interface{}			`json:"val"`
 }
 
 type ACDPeople struct {
@@ -60,12 +80,16 @@ type ACDPeople struct {
 	Comorbid string 	  `json:"comorbid"`
 	// Sampeltca time.Time	  `json:"sampeltca"`
 	Sampeltca string	  `json:"sampeltca"`
-	Sampeldiambil string  `json:"sampeldiambil"`
 	Bildipanggil int 	  `json:"bildipanggil"`
-	Gelanghso string      `json:"gelanghso"`
-	Annex14 string 	      `json:"annex14"`
+	// Sampeldiambil string  `json:"sampeldiambil"`
+	Sampeldiambil bool    `json:"sampeldiambil"`
 	Sampelres string  	  `json:"sampelres"`
-	Pelepasan string	  `json:"pelepasan"`	
+	// Gelanghso string      `json:"gelanghso"`
+	Gelanghso bool        `json:"gelanghso"`
+	// Annex14 string        `json:"annex14"`
+	Annex14 bool          `json:"annex14"`
+	// Pelepasan string      `json:"pelepasan"`	
+	Pelepasan bool        `json:"pelepasan"`	
 }
 
 type ACDPeoples struct {
@@ -400,17 +424,40 @@ func GetSaringan(conn *pgxpool.Pool, lr LawatanRumah) ([]byte, error) {
 	// 	 and district=$3
 	// 	 and state=$4`	
 	
+	// sql :=
+	// 	`select p.ident, p.name, p.tel, p.address,
+	// 	 coalesce(p.comorbid, '') as comorbid,
+	// 	 coalesce(p.gelanghso, '') as gelanghso, 
+	// 	 coalesce(p.annex14, '') as annex14,
+	// 	 coalesce(p.pelepasan, '') as pelepasan,
+	// 	 coalesce(a.kategorikes, '') as kategorikes,
+	// 	 coalesce(a.gejala, '') as gejala,
+	// 	 coalesce(s.jenissampel, '') as jenissampel,
+	// 	 coalesce(s.sampeltca::text, '') as sampeltca,
+	// 	 coalesce(s.sampeldiambil, '') as sampeldiambil, 
+	// 	 coalesce(s.bildipanggil, 0) as bildipanggil,
+	// 	 coalesce(s.sampelres, '') as sampelres
+	// 	 from acd.acdactivity a
+	// 	   join acd.people p
+	// 	     on a.peopleident = p.ident	
+	// 	   join acd.sampel s
+	// 	     on p.ident = s.peopleident	   
+	// 	 where a.tarikhacd::text=$1
+	// 	 and a.locality=$2
+	// 	 and a.district=$3
+	// 	 and a.state=$4`
+
 	sql :=
 		`select p.ident, p.name, p.tel, p.address,
 		 coalesce(p.comorbid, '') as comorbid,
-		 coalesce(p.gelanghso, '') as gelanghso, 
-		 coalesce(p.annex14, '') as annex14,
-		 coalesce(p.pelepasan, '') as pelepasan,
+		 p.gelanghso, 
+		 p.annex14,
+		 p.pelepasan,
 		 coalesce(a.kategorikes, '') as kategorikes,
 		 coalesce(a.gejala, '') as gejala,
 		 coalesce(s.jenissampel, '') as jenissampel,
 		 coalesce(s.sampeltca::text, '') as sampeltca,
-		 coalesce(s.sampeldiambil, '') as sampeldiambil, 
+		 coalesce(s.sampeldiambil, false) as sampeldiambil, 
 		 coalesce(s.bildipanggil, 0) as bildipanggil,
 		 coalesce(s.sampelres, '') as sampelres
 		 from acd.acdactivity a
@@ -436,15 +483,19 @@ func GetSaringan(conn *pgxpool.Pool, lr LawatanRumah) ([]byte, error) {
 		var tel string 
 		var address string 
 		var comorbid string 
-		var gelanghso string  
-		var annex14 string 
-		var pelepasan string 
+		// var gelanghso string  
+		var gelanghso bool 
+		// var annex14 string 
+		var annex14 bool 
+		// var pelepasan string 
+		var pelepasan bool 
 		var	kategorikes string
 		var gejala string 
 		var jenissampel string 
 		// // var sampeltca time.Time 
 		var sampeltca string
-		var sampeldiambil string  
+		// var sampeldiambil string  
+		var sampeldiambil bool 
 		var bildipanggil int 
 		var sampelres string 
 			
@@ -517,7 +568,7 @@ func UpdateACDPeople(conn *pgxpool.Pool, ap ACDPeople) error {
 		   set name=$1, tel=$2, address=$3, locality=$4,
 		     district=$5, state=$6, comorbid=$7, gelanghso=$8,
 			 annex14=$9, pelepasan=$10
-		   where ident=$11`
+		   where ident=$11`	
 
 	_, err := conn.Exec(context.Background(), sql,
 		ap.Name, ap.Tel, ap.Address, ap.Locality, ap.District,
@@ -555,8 +606,62 @@ func UpdateACDPeopleHandler(w http.ResponseWriter, r *http.Request) {
         return 
     }   
 }
+
+/* acd.people - Columns */
+// name, tel, address, comorbid, gelanghso, annex14, pelepasan 
+func UpdateACDPeopleOneCol(conn *pgxpool.Pool, apoc ACDPeopleOneCol) error {	
+
+	sql := 
+		`update acd.people
+		   set %s=$1
+		   where ident=$2`
+	sql = fmt.Sprintf(sql, apoc.Col)
+
+	var err error
+	if apoc.Col == "gelanghso" || apoc.Col == "annex14" || apoc.Col == "pelepasan" {
+		val := apoc.Val.(bool)
+		_, err = conn.Exec(context.Background(), sql,
+		val, apoc.Ident) 
+	} else {
+		val := apoc.Val.(string)
+		_, err = conn.Exec(context.Background(), sql,
+		val, apoc.Ident) 
+	}
+	                       
+	if err != nil {
+		return err
+	   }
+	return nil
+}
+
+func UpdateACDPeopleOneColHandler(w http.ResponseWriter, r *http.Request) {
+    util.SetDefaultHeader(w)
+    if (r.Method == "OPTIONS") { return }
+    fmt.Println("[UpdateACDPeopleOneColHandler] request received")    
+
+    // VERIFY AUTH TOKEN
+    // authToken := strings.Split(r.Header.Get("Authorization"), " ")[1]
+    // if !auth.VerifyTokenHMAC(authToken) {
+    //     util.SendUnauthorizedStatus(w)
+    //     return
+    // }   
+
+    var apoc ACDPeopleOneCol
+    err := json.NewDecoder(r.Body).Decode(&apoc)
+    if err != nil {
+        util.SendInternalServerErrorStatus(w, err)
+        return
+    }
+    
+    db.CheckDbConn()
+    err = UpdateACDPeopleOneCol(db.Conn, apoc)
+    if err != nil {        
+        util.SendInternalServerErrorStatus(w, err)
+        return 
+    }   
+}
 	
-func UpdateAcdactivity(conn *pgxpool.Pool, aa ACDActivity) error {
+func UpdateACDactivity(conn *pgxpool.Pool, aa ACDActivity) error {
 	sql := 
 		`update acd.acdactivity
 		   set locality=$1, district=$2, state=$3, kategorikes=$4,
@@ -574,10 +679,10 @@ func UpdateAcdactivity(conn *pgxpool.Pool, aa ACDActivity) error {
 	return nil
 }
 
-func UpdateAcdactivityHandler(w http.ResponseWriter, r *http.Request) {
+func UpdateACDactivityHandler(w http.ResponseWriter, r *http.Request) {
     util.SetDefaultHeader(w)
     if (r.Method == "OPTIONS") { return }
-    fmt.Println("[UpdateAcdactivityHandler] request received")    
+    fmt.Println("[UpdateACDactivityHandler] request received")    
 
     // VERIFY AUTH TOKEN
     // authToken := strings.Split(r.Header.Get("Authorization"), " ")[1]
@@ -594,13 +699,60 @@ func UpdateAcdactivityHandler(w http.ResponseWriter, r *http.Request) {
     }
     
     db.CheckDbConn()
-    err = UpdateAcdactivity(db.Conn, aa)
+    err = UpdateACDactivity(db.Conn, aa)
     if err != nil {        
         util.SendInternalServerErrorStatus(w, err)
         return 
     }   
 }
-	
+
+/* acd.acdactivity - Columns */
+// kategorikes, gejala
+func UpdateACDactivityOneCol(conn *pgxpool.Pool, aaoc ACDActivityOneCol) error {	
+
+	sql := 
+		`update acd.acdactivity
+		   set %s=$1
+		   where tarikhacd=$2
+		     and peopleident=$3`
+	sql = fmt.Sprintf(sql, aaoc.Col)
+
+	val := aaoc.Val.(string)
+	_, err := conn.Exec(context.Background(), sql,
+		val, aaoc.TarikhACD, aaoc.Ident) 		                       
+	if err != nil {
+		return err
+	   }
+	return nil
+}
+
+func UpdateACDactivityOneColHandler(w http.ResponseWriter, r *http.Request) {
+    util.SetDefaultHeader(w)
+    if (r.Method == "OPTIONS") { return }
+    fmt.Println("[UpdateACDactivityOneColHandler] request received")    
+
+    // VERIFY AUTH TOKEN
+    // authToken := strings.Split(r.Header.Get("Authorization"), " ")[1]
+    // if !auth.VerifyTokenHMAC(authToken) {
+    //     util.SendUnauthorizedStatus(w)
+    //     return
+    // }   
+
+    var aaoc ACDActivityOneCol
+    err := json.NewDecoder(r.Body).Decode(&aaoc)
+    if err != nil {
+        util.SendInternalServerErrorStatus(w, err)
+        return
+    }
+    
+    db.CheckDbConn()
+    err = UpdateACDactivityOneCol(db.Conn, aaoc)
+    if err != nil {        
+        util.SendInternalServerErrorStatus(w, err)
+        return 
+    }   
+}
+
 func UpdateSampel(conn *pgxpool.Pool, s Sampel) error {
 	sql := 
 		`update acd.acdactivity
@@ -643,3 +795,65 @@ func UpdateSampelHandler(w http.ResponseWriter, r *http.Request) {
         return 
     }   
 }
+
+/* acd.sampel - Columns */
+// jenissampel, sampeltca, bildipanggil, sampeldiambil, sampelres
+func UpdateSampelOneCol(conn *pgxpool.Pool, soc SampelOneCol) error {	
+
+	sql := 
+		`update acd.sampel
+		   set %s=$1
+		   where peopleident=$2`
+	sql = fmt.Sprintf(sql, soc.Col)
+
+	var err error
+	if soc.Col == "sampeldiambil" {
+		val := soc.Val.(bool)
+		_, err = conn.Exec(context.Background(), sql,
+		val, soc.Ident) 
+	} else if soc.Col == "bildipanggil" {
+		val := int(soc.Val.(float64))
+		_, err = conn.Exec(context.Background(), sql,
+		val, soc.Ident) 
+	} else {
+		val := soc.Val.(string)
+		_, err = conn.Exec(context.Background(), sql,
+		val, soc.Ident) 
+	}
+	                       
+	if err != nil {
+		return err
+	   }
+	return nil
+}
+
+func UpdateSampelOneColHandler(w http.ResponseWriter, r *http.Request) {
+    util.SetDefaultHeader(w)
+    if (r.Method == "OPTIONS") { return }
+    fmt.Println("[UpdateSampelOneColHandler] request received")    
+
+    // VERIFY AUTH TOKEN
+    // authToken := strings.Split(r.Header.Get("Authorization"), " ")[1]
+    // if !auth.VerifyTokenHMAC(authToken) {
+    //     util.SendUnauthorizedStatus(w)
+    //     return
+    // }   
+
+    var soc SampelOneCol
+    err := json.NewDecoder(r.Body).Decode(&soc)
+    if err != nil {
+        util.SendInternalServerErrorStatus(w, err)
+        return
+    }
+    
+    db.CheckDbConn()
+    err = UpdateSampelOneCol(db.Conn, soc)
+    if err != nil {        
+        util.SendInternalServerErrorStatus(w, err)
+        return 
+    }   
+}
+
+
+
+

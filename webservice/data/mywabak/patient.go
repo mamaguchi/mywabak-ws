@@ -253,7 +253,7 @@ func GetPeopleBasic(conn *pgxpool.Pool, ident string) ([]byte, error) {
         Ident: ident,
     }
     outputJson, err := json.MarshalIndent(people, "", "\t")
-			return outputJson, err
+	return outputJson, err
 }
 
 func GetPeopleBasicHandler(w http.ResponseWriter, r *http.Request) {

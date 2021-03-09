@@ -31,9 +31,14 @@ type LocLocality struct {
 type LawatanRumah struct {
 	ACDName string 			`json:"acdName"`
 	TarikhACD string 		`json:"tarikhACD"`
-	Locality string 		`json:"locality"`
-	District string 		`json:"district"`
-	State string 			`json:"state"`
+	// Locality string 		`json:"locality"`
+	// District string 		`json:"district"`
+	// State string 			`json:"state"`
+	Bilrumahk int 			`json:"bilrumahk"`
+	Bilrumahp int 			`json:"bilrumahp"`	
+}
+
+type BilRumah struct {
 	Bilrumahk int 			`json:"bilrumahk"`
 	Bilrumahp int 			`json:"bilrumahp"`
 }
@@ -46,7 +51,7 @@ type ACD struct {
 }
 
 type ACDList struct {
-	ACDs []ACD 				`json:"acds"`
+	ACDs []string 				`json:"acds"`
 }
 
 type ACDActivityOneCol struct {
@@ -97,6 +102,15 @@ type ACDHsoOneCol struct {
 	Ident string 			`json:"ident"`
 	Col string 				`json:"col"`
 	Val interface{}			`json:"val"`
+}
+
+type ACDPeopleBasic struct {
+    Ident string          `json:"ident"`
+	Name string 	      `json:"name"`
+	Dob string 			  `json:"dob"`
+    Tel string            `json:"tel"`
+    Address string        `json:"address"` 
+	Comorbid string 	  `json:"comorbid"`
 }
 
 type ACDPeople struct {
@@ -156,10 +170,7 @@ func GetACDList(conn *pgxpool.Pool) ([]byte, error) {
 			 return nil, err
 		 }
 		 
-		 acd := ACD{				
-			 Name: name,			 			
-		 }
-		 acdList.ACDs = append(acdList.ACDs, acd)
+		 acdList.ACDs = append(acdList.ACDs, name)
 	 }
 	 outputJson, err := json.MarshalIndent(acdList, "", "\t")
 	 return outputJson, err
@@ -215,7 +226,7 @@ func UpsertACD(conn *pgxpool.Pool, acd ACD) error {
 func UpsertACDHandler(w http.ResponseWriter, r *http.Request) {
     util.SetDefaultHeader(w)
     if (r.Method == "OPTIONS") { return }
-    fmt.Println("[UpsertLawatanRumahHandler] request received")    
+    fmt.Println("[UpsertACDHandler] request received")    
 
     // VERIFY AUTH TOKEN
     // authToken := strings.Split(r.Header.Get("Authorization"), " ")[1]
@@ -244,31 +255,29 @@ func GetLawatanRumah(conn *pgxpool.Pool, lr LawatanRumah) ([]byte, error) {
 		`select bilrumahk, bilrumahp
 		 from acd.house
 		 where acd=$1
-		   and tarikhacd=$2
-		   and locality=$3
-		   and district=$4
-		   and state=$5`
+		   and tarikhacd=$2`
 
 	row := conn.QueryRow(context.Background(), sql, 
-		lr.ACDName, lr.TarikhACD, lr.Locality, lr.District, lr.State)
+		lr.ACDName, lr.TarikhACD)
 	var bilrumahk int 
 	var bilrumahp int 	
 	err := row.Scan(&bilrumahk, &bilrumahp)
 	if err != nil {
 		if err == pgx.ErrNoRows { 			
-			lrNotFound := LawatanRumah{
-                District: "NOTFOUND",
+			lrNotFound := BilRumah{
+                Bilrumahk: 0,
+				Bilrumahp: 0,
             }
             outputJson, err := json.MarshalIndent(lrNotFound, "", "\t")
 			return outputJson, err
 		} 
 		return nil, err
 	}
-	rumah := LawatanRumah{				
+	bilRumah := BilRumah{				
 		Bilrumahk: bilrumahk,
 		Bilrumahp: bilrumahp,
 	}
-	outputJson, err := json.MarshalIndent(rumah, "", "\t")
+	outputJson, err := json.MarshalIndent(bilRumah, "", "\t")
 	return outputJson, err
 }
 
@@ -308,48 +317,38 @@ func UpsertLawatanRumah(conn *pgxpool.Pool, lr LawatanRumah) error {
 		sql :=
 			`insert into acd.house
 			(
-				acd, tarikhacd, locality, district, state,
-				bilrumahk
+				acd, tarikhacd, bilrumahk
 			)
 			values
 			(
-				$1, $2, $3, $4, $5, $6
+				$1, $2, $3
 			) 
-			on conflict on constraint house_tarikhacd_locality_key
+			on conflict on constraint house_acd_tarikhacd_key
 			do 
 				update set bilrumahk=house.bilrumahk+1
 				where house.acd=$1
-				  and house.tarikhacd=$2
-				  and house.locality=$3
-				  and house.district=$4
-				  and house.state=$5`
+				  and house.tarikhacd=$2`
 
 		_, err = conn.Exec(context.Background(), sql, 
-			lr.ACDName, lr.TarikhACD, lr.Locality, 
-			lr.District, lr.State, lr.Bilrumahk)
+			lr.ACDName, lr.TarikhACD, lr.Bilrumahk)
 	} else if lr.Bilrumahk == 0{ 
 		sql :=
 			`insert into acd.house
 			(
-				acd, tarikhacd, locality, district, state,
-				bilrumahp
+				acd, tarikhacd, bilrumahp
 			)
 			values
 			(
-				$1, $2, $3, $4, $5, $6
+				$1, $2, $3
 			) 
-			on conflict on constraint house_tarikhacd_locality_key
+			on conflict on constraint house_acd_tarikhacd_key
 			do 
 				update set bilrumahp=house.bilrumahp+1
 				where house.acd=$1
-				  and house.tarikhacd=$1
-				  and house.locality=$2
-				  and house.district=$3
-				  and house.state=$4`
+				  and house.tarikhacd=$2`
 
 		_, err = conn.Exec(context.Background(), sql, 
-			lr.ACDName, lr.TarikhACD, lr.Locality, 
-			lr.District, lr.State, lr.Bilrumahp)
+			lr.ACDName, lr.TarikhACD, lr.Bilrumahp)
 	}
 
 	if err != nil {
@@ -405,11 +404,11 @@ func GetKategoriKesSaringan(conn *pgxpool.Pool, lr LawatanRumah) ([]byte, error)
 	sql :=
 		`select count(peopleident) as bilwargaemas, 
 		   (select count(peopleident)
-			 from acd.acdactivity 
+			 from acd.activity 
 			 where tarikhacd=$1
 			   and acd=$2			   
 			   and kategorikes='Bergejala') as bilbergejala
-		 from acd.acdactivity 
+		 from acd.activity 
 		 where tarikhacd=$1
 		   and acd=$2		   
 		   and kategorikes='Warga Emas Perlu Disaring'`
@@ -609,18 +608,20 @@ func AddSaringan(conn *pgxpool.Pool, ap ACDPeople) error {
 	sql1 :=
 		`insert into acd.people
 		(
-			ident, name, dob, tel, address, comorbid, 
-			locality, district, state, 
+			ident, name, dob, tel, address, comorbid
 		)
-		select $1, $2, $3, $4, $5, $6,  
-		  profile.locality, profile.district, profile.state
-		from acd.profile profile
-		where profile.name=$7
-		`
+		values
+		(
+			$1, $2, $3, $4, $5, $6
+		)   
+		on conflict on constraint people_ident_key
+		do 
+		    update set name=$2, dob=$3, tel=$4,
+			  address=$5, comorbid=$6
+			where people.ident=$1`
 
 	_, err := conn.Exec(context.Background(), sql1, 
-		ap.Ident, ap.Name, ap.Dob, ap.Tel, ap.Address, ap.Comorbid,
-		ap.ACDName)
+		ap.Ident, ap.Name, ap.Dob, ap.Tel, ap.Address, ap.Comorbid)
 	if err != nil {
 		return err
 	}
@@ -632,8 +633,14 @@ func AddSaringan(conn *pgxpool.Pool, ap ACDPeople) error {
 		)
 		 values
 		(
-			$1, $2, $3, $4, $5, $6, $7
-		)`
+			$1, $2, $3, $4, $5
+		)
+		on conflict on constraint activity_acd_peopleident_tarikhacd_key
+		do 
+		    update set kategorikes=$4, gejala=$5
+			where activity.acd=$1
+			  and activity.peopleident=$2
+			  and activity.tarikhacd=$3`
 
 	_, err = conn.Exec(context.Background(), sql2, 
 		ap.ACDName, ap.Ident, ap.TarikhACD,  
@@ -701,7 +708,7 @@ func GetSaringanBasic(conn *pgxpool.Pool, ident string) ([]byte, error) {
 		return nil, err
 	}
 
-	acdPeople := ACDPeople{				
+	acdPeople := ACDPeopleBasic{				
 		Ident: ident,
 		Name: name,
 		Dob: dob,
@@ -810,6 +817,7 @@ func GetSaringan(conn *pgxpool.Pool, lr LawatanRumah) ([]byte, error) {
 		`select p.ident, p.name, p.dob::text, 
 		 p.tel, p.address,
 		 coalesce(p.comorbid, '') as comorbid,		 
+		 coalesce(a.tarikhacd::text, '') as tarikhacd,
 		 coalesce(a.kategorikes, '') as kategorikes,
 		 coalesce(a.gejala, '') as gejala		 
 		 from acd.profile profile		   	
@@ -818,7 +826,7 @@ func GetSaringan(conn *pgxpool.Pool, lr LawatanRumah) ([]byte, error) {
 		   left join acd.people p
 		     on a.peopleident = p.ident   
 		 where profile.name=$1
-		   and a.tarikhacd::text=$2`
+		   and a.tarikhacd::text ilike $2`
 
 	rows, err := conn.Query(context.Background(), sql, 
 		lr.ACDName, lr.TarikhACD)
@@ -833,12 +841,13 @@ func GetSaringan(conn *pgxpool.Pool, lr LawatanRumah) ([]byte, error) {
 		var dob string
 		var tel string 
 		var address string 
+		var tarikhACD string
 		var comorbid string 		 
 		var	kategorikes string
 		var gejala string 		
 			
 		err := rows.Scan(&ident, &name, &dob, &tel, &address, 
-			&comorbid, &kategorikes, &gejala)	
+			&comorbid, &tarikhACD, &kategorikes, &gejala)	
 		if err != nil {		
 			return nil, err
 		}
@@ -849,11 +858,11 @@ func GetSaringan(conn *pgxpool.Pool, lr LawatanRumah) ([]byte, error) {
 			Dob: dob,
 			Tel: tel,
 			Address: address,
-			Comorbid: comorbid,				
+			Comorbid: comorbid,	
+			TarikhACD: tarikhACD,			
 			Kategorikes: kategorikes,
 			Gejala: gejala,			
 		}
-		fmt.Printf("Single struct: %+v\n", acdPeople)
 		acdPeoples.Peoples = append(acdPeoples.Peoples,
 			acdPeople)
 	}
@@ -879,7 +888,6 @@ func GetSaringanHandler(w http.ResponseWriter, r *http.Request) {
         util.SendInternalServerErrorStatus(w, err)
         return
     }
-	fmt.Printf("%+v\n", lr)
     
     db.CheckDbConn()
     saringanJson, err := GetSaringan(db.Conn, lr)

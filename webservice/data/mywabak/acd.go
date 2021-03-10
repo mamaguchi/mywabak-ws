@@ -104,6 +104,26 @@ type ACDHsoOneCol struct {
 	Val interface{}			`json:"val"`
 }
 
+type ACDPeopleHSOandSampelIn struct {
+	ACDName string 			`json:"acdName"`
+	Ident string 			`json:"ident"`
+}
+
+type ACDPeopleHSOandSampelOut struct {
+	Gelanghso bool 			`json:"gelanghso"`
+	Annex14 bool 			`json:"annex14"`
+	Pelepasan bool 			`json:"pelepasan"`
+	Sampels []SampelOut		`json:"sampels"`
+}
+
+type SampelOut struct {
+	Jenissampel string 		`json:"jenissampel"`
+	Sampeltca string 		`json:"sampeltca"`
+	Bildipanggil int 		`json:"bildipanggil"`
+	Sampeldiambil bool      `json:"sampeldiambil"`
+	Sampelres string 		`json:"sampelres"`
+}
+
 type ACDPeopleBasic struct {
     Ident string          `json:"ident"`
 	Name string 	      `json:"name"`
@@ -751,45 +771,6 @@ func GetSaringanBasicHandler(w http.ResponseWriter, r *http.Request) {
 // *    
 func GetSaringan(conn *pgxpool.Pool, lr LawatanRumah) ([]byte, error) {
 	// sql :=
-	// 	`select ident, name, tel, address, kategorikes,
-	// 	 coalesce(jenissampel, '') as jenissampel,
-	// 	 coalesce(sampeltca::text, '') as sampeltca, 
-	// 	 coalesce(sampeldiambil, '') as sampeldiambil, 
-	// 	 coalesce(bildipanggil, 0) as bildipanggil,
-	// 	 coalesce(gelanghso, '') as gelanghso, 
-	// 	 coalesce(annex14, '') as annex14,
-	// 	 coalesce(sampelres, '') as sampelres, 
-	// 	 coalesce(pelepasan, '') as pelepasan
-	// 	 from acd.people
-	// 	 where tarikhacd=$1
-	// 	 and locality=$2
-	// 	 and district=$3
-	// 	 and state=$4`	
-	
-	// sql :=
-	// 	`select p.ident, p.name, p.tel, p.address,
-	// 	 coalesce(p.comorbid, '') as comorbid,
-	// 	 coalesce(p.gelanghso, '') as gelanghso, 
-	// 	 coalesce(p.annex14, '') as annex14,
-	// 	 coalesce(p.pelepasan, '') as pelepasan,
-	// 	 coalesce(a.kategorikes, '') as kategorikes,
-	// 	 coalesce(a.gejala, '') as gejala,
-	// 	 coalesce(s.jenissampel, '') as jenissampel,
-	// 	 coalesce(s.sampeltca::text, '') as sampeltca,
-	// 	 coalesce(s.sampeldiambil, '') as sampeldiambil, 
-	// 	 coalesce(s.bildipanggil, 0) as bildipanggil,
-	// 	 coalesce(s.sampelres, '') as sampelres
-	// 	 from acd.acdactivity a
-	// 	   join acd.people p
-	// 	     on a.peopleident = p.ident	
-	// 	   join acd.sampel s
-	// 	     on p.ident = s.peopleident	   
-	// 	 where a.tarikhacd::text=$1
-	// 	 and a.locality=$2
-	// 	 and a.district=$3
-	// 	 and a.state=$4`
-
-	// sql :=
 	// 	`select p.ident, p.name, p.dob::text, 
 	// 	 p.tel, p.address,
 	// 	 coalesce(p.comorbid, '') as comorbid,
@@ -799,10 +780,10 @@ func GetSaringan(conn *pgxpool.Pool, lr LawatanRumah) ([]byte, error) {
 	// 	 coalesce(a.kategorikes, '') as kategorikes,
 	// 	 coalesce(a.gejala, '') as gejala,
 	// 	 coalesce(s.jenissampel, '') as jenissampel,
-	// 	 coalesce(s.sampeltca::text, '') as sampeltca,
-	// 	 coalesce(s.sampeldiambil, false) as sampeldiambil, 
-	// 	 coalesce(s.bildipanggil, 0) as bildipanggil,
-	// 	 coalesce(s.sampelres, '') as sampelres
+		//  coalesce(s.sampeltca::text, '') as sampeltca,
+		//  coalesce(s.sampeldiambil, false) as sampeldiambil, 
+		//  coalesce(s.bildipanggil, 0) as bildipanggil,
+		//  coalesce(s.sampelres, '') as sampelres
 	// 	 from acd.acdactivity a
 	// 	   join acd.people p
 	// 	     on a.peopleident = p.ident	
@@ -898,6 +879,108 @@ func GetSaringanHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("%s\n", saringanJson)
     fmt.Fprintf(w, "%s", saringanJson)
 }
+
+func GetHSOandSample(conn *pgxpool.Pool, aphsi ACDPeopleHSOandSampelIn) ([]byte, error) {		
+	// HSO
+	sqlHSO :=
+		`select h.gelanghso, h.annex14, h.pelepasan		 
+		 from acd.hso h		   			     
+		 where h.acd=$1
+		   and h.peopleident=$2`
+
+	row := conn.QueryRow(context.Background(), sqlHSO, 
+		aphsi.ACDName, aphsi.Ident)	
+
+	var gelanghso bool
+	var annex14 bool 
+	var pelepasan bool
+	err := row.Scan(&gelanghso, &annex14, &pelepasan)	
+	if err != nil {	
+		if err == pgx.ErrNoRows { 			
+		//Do nothing
+		} else {
+			return nil, err
+		}	
+	}	
+	aphso := ACDPeopleHSOandSampelOut{
+		Gelanghso: gelanghso,
+		Annex14: annex14,
+		Pelepasan: pelepasan,
+	}
+
+	// Sample
+	sqlSample :=
+		`select s.jenissampel, 
+		   coalesce(s.sampeltca::text, '') as sampeltca,
+		   coalesce(s.bildipanggil, 0) as bildipanggil,
+		   coalesce(s.sampeldiambil, false) as sampeldiambil,
+		   coalesce(s.sampelres, '') as sampelres
+		 from acd.sampel s		   			     
+		 where s.acd=$1
+		   and s.peopleident=$2`
+
+	rows, err := conn.Query(context.Background(), sqlSample, 
+		aphsi.ACDName, aphsi.Ident)	
+	if err != nil {
+		return nil, err
+	}
+
+	for rows.Next() {	
+		var jenissampel string 
+		var sampeltca string 
+		var bildipanggil int 
+		var sampeldiambil bool 
+		var sampelres string 
+
+		err = rows.Scan(&jenissampel, &sampeltca, &bildipanggil,
+			&sampeldiambil, &sampelres)	
+		if err != nil {				
+			return nil, err
+		}
+
+		// OUTPUT
+		sampel := SampelOut{						
+			Jenissampel: jenissampel,
+			Sampeltca: sampeltca,
+			Bildipanggil: bildipanggil,
+			Sampeldiambil: sampeldiambil,
+			Sampelres: sampelres,		
+		}
+		aphso.Sampels = append(aphso.Sampels, sampel)
+	}
+	outputJson, err := json.MarshalIndent(aphso, "", "")
+	return outputJson, err	
+}
+
+func GetHSOandSampleHandler(w http.ResponseWriter, r *http.Request) {
+    util.SetDefaultHeader(w)
+    if (r.Method == "OPTIONS") { return }
+    fmt.Println("[GetHSOandSampleHandler] request received")    
+
+    // VERIFY AUTH TOKEN
+    // authToken := strings.Split(r.Header.Get("Authorization"), " ")[1]
+    // if !auth.VerifyTokenHMAC(authToken) {
+    //     util.SendUnauthorizedStatus(w)
+    //     return
+    // }   
+
+    var aphsi ACDPeopleHSOandSampelIn
+    err := json.NewDecoder(r.Body).Decode(&aphsi)
+    if err != nil {
+        util.SendInternalServerErrorStatus(w, err)
+        return
+    }
+    
+    db.CheckDbConn()
+    acdHSOandSampelJson, err := GetHSOandSample(db.Conn, aphsi)
+    if err != nil {        
+        util.SendInternalServerErrorStatus(w, err)
+        return 
+    }   
+	fmt.Printf("%s\n", acdHSOandSampelJson)
+    fmt.Fprintf(w, "%s", acdHSOandSampelJson)
+}
+
 // *	
 func UpdateACDPeople(conn *pgxpool.Pool, ap ACDPeople) error {
 	// sql := 

@@ -37,6 +37,7 @@ func main() {
 	http.HandleFunc("/acd/saringan/add", mywabak.AddSaringanHandler)
 	http.HandleFunc("/acd/saringan/people/get", mywabak.GetSaringanBasicHandler)
 	http.HandleFunc("/acd/saringan/peoples/get", mywabak.GetSaringanHandler)
+	http.HandleFunc("/acd/saringan/hsoandsampel/get", mywabak.GetHSOandSampleHandler)
 	http.HandleFunc("/acd/saringan/people/update", mywabak.UpdateACDPeopleHandler)
 	http.HandleFunc("/acd/saringan/people/updateoc", mywabak.UpdateACDPeopleOneColHandler)
 	http.HandleFunc("/acd/saringan/hso/update", mywabak.UpdateACDHsoHandler)

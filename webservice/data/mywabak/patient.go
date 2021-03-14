@@ -1,6 +1,7 @@
 package mywabak
 
 import (
+    "os"
     "net/http"
     "encoding/json"
     // "time"
@@ -12,13 +13,14 @@ import (
     "context"
     "github.com/jackc/pgx"
     "github.com/jackc/pgx/pgxpool"
+    "github.com/jackc/pgconn"
     "mywabak/webservice/db"
     // "mywabak/webservice/auth"
     "mywabak/webservice/util"
 )
 
 type Wbkcase struct {
-	Name string 	    `json:"name"`
+	Casename string	    `json:"casename"`
     Peopleident string  `json:"peopleident"`
     Contactto string    `json:"contactto"`
     Lastcontact string  `json:"lastcontact"`
@@ -30,6 +32,10 @@ type Wbkcase struct {
     Caseorigin string   `json:"caseorigin"`
     Livedeadstat string `json:"livedeadstat"`
     Causeofdeath string `json:"causeofdeath"`
+}
+
+type WbkcasePeopleError struct {
+    Err string          `json:"err"`
 }
 
 type Identity struct {
@@ -131,7 +137,7 @@ func GetPosCasesPCRHandler(w http.ResponseWriter, r *http.Request) {
     }
     
     db.CheckDbConn()
-    posCasesJson, err := GetPosCasesPCR(db.Conn, wbkcase.Name)
+    posCasesJson, err := GetPosCasesPCR(db.Conn, wbkcase.Casename)
     if err != nil {
         if err == pgx.ErrNoRows {
             log.Print("Positive cases not found in database")
@@ -216,7 +222,7 @@ func GetCloseContactsHandler(w http.ResponseWriter, r *http.Request) {
     }
     
     db.CheckDbConn()
-    closeContactsJson, err := GetCloseContacts(db.Conn, wbkcase.Name)
+    closeContactsJson, err := GetCloseContacts(db.Conn, wbkcase.Casename)
     if err != nil {        
         util.SendInternalServerErrorStatus(w, err)
         return 
@@ -286,7 +292,7 @@ func GetPeopleBasicHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AddPeopleToWbkcase(conn *pgxpool.Pool, c Wbkcase) error {
-    if c.Name == "" || c.Peopleident == "" {
+    if c.Casename == "" || c.Peopleident == "" {
         return errors.New(util.INPUT_PARAMS_NOT_INITIALIZED)
     }
     
@@ -300,7 +306,7 @@ func AddPeopleToWbkcase(conn *pgxpool.Pool, c Wbkcase) error {
         where c.name=$2`    
 
     _, err := conn.Exec(context.Background(), sql, 
-        c.Peopleident, c.Name)
+        c.Peopleident, c.Casename)
     if err != nil {
         return err
     }
@@ -331,10 +337,28 @@ func AddPeopleToWbkcaseHandler(w http.ResponseWriter, r *http.Request) {
     if err != nil {                
         if err.Error() == util.INPUT_PARAMS_NOT_INITIALIZED {
             util.SendBadReqStatus(w, err)
-        } else {
+            return
+        }         
+        
+        if pgerr, ok := err.(*pgconn.PgError); ok {
+			if pgerr.ConstraintName == "wbkcase_people_wbkcaseid_peopleident_key" {
+				fmt.Fprintf(os.Stderr, "Unable to insert a new entry into wbkcase_people, because an ident for this case already exists: %v\n", pgerr)
+                wpErr := WbkcasePeopleError{
+                    Err: "IDEXISTS",
+                }
+                outputJson, err := json.MarshalIndent(wpErr, "", "")
+                if err != nil {
+                    util.SendInternalServerErrorStatus(w, err)
+                }
+                fmt.Fprintf(w, "%s", outputJson)
+			} else {
+				fmt.Fprintf(os.Stderr, "Unexpected postgres error trying to insert a wbkcase_people entry: %v\n", pgerr)
+                util.SendInternalServerErrorStatus(w, pgerr)
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "Unexpected error trying to insert a wbkcase_people entry: %v\n", err)
             util.SendInternalServerErrorStatus(w, err)
-        }
-        return 
+		}
     }    
 }
 
@@ -352,7 +376,7 @@ func UpdatePeopleInWbkcase(conn *pgxpool.Pool, c Wbkcase) error {
     _, err := conn.Exec(context.Background(), sql,
         c.Contactto, c.Lastcontact, c.Symptoms, c.Onset,
         c.Workloc, c.Remarks, c.Casetype, c.Livedeadstat, 
-        c.Causeofdeath, c.Name, c.Peopleident)                         
+        c.Causeofdeath, c.Casename, c.Peopleident)                         
     if err != nil {
         return err
     }
@@ -391,7 +415,7 @@ func UpdatePeopleInWbkcaseHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func DelPeopleFromWbkcase(conn *pgxpool.Pool, wbkc Wbkcase) error {
-    if wbkc.Name == "" || wbkc.Peopleident == "" {
+    if wbkc.Casename == "" || wbkc.Peopleident == "" {
         return errors.New(util.INPUT_PARAMS_NOT_INITIALIZED)
     }
     
@@ -408,7 +432,7 @@ func DelPeopleFromWbkcase(conn *pgxpool.Pool, wbkc Wbkcase) error {
               where cp.contactto=$2) is null`    
 
     _, err := conn.Exec(context.Background(), sql, 
-        wbkc.Name, wbkc.Peopleident)
+        wbkc.Casename, wbkc.Peopleident)
     if err != nil {
         return err
     }

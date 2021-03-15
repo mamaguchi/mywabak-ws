@@ -93,6 +93,10 @@ type CloseContactRegistration struct {
     CloseContactRegs []CloseContactPerAddress    `json:"closeContactRegs"`
 }
 
+type CloseContactRegStatus struct {
+    CCRegStatus string      `json:"ccRegStatus"`
+}
+
 type PosCases struct {
 	Peoples []People 	`json:"peoples"`
 }
@@ -325,18 +329,7 @@ func GetPeopleBasicHandler(w http.ResponseWriter, r *http.Request) {
     fmt.Printf("%s\n", peopleJson)
     fmt.Fprintf(w, "%s", peopleJson)
 }
-        // ident: '',
-        // name: '',
-        // gender: '',
-        // dob: '',
-        // nationality: '',
-        // race: '',
-        // tel: '',
-        // address: '',
-        // state: '',
-        // district: '',
-        // locality: '',
-        // occupation: '',
+        
 func AddPeopleToWbkcase(conn *pgxpool.Pool, c Wbkcase) error {
     if c.Casename == "" || c.Peopleident == "" {
         return errors.New(util.INPUT_PARAMS_NOT_INITIALIZED)
@@ -798,7 +791,96 @@ func UpdateHSOHandler(w http.ResponseWriter, r *http.Request) {
     }    
 }
 
-func RegNewCloseContact(conn *pgxpool.Pool, c WbkcaseMetadata, cc CloseContact,
+// When registration form is filled by close contact.
+func RegNewCloseContactMode1(conn *pgxpool.Pool, c WbkcaseMetadata, cc CloseContact,
+    address string, locality string, district string, state string) error {
+
+    // INSERT PEOPLE
+    sql := 
+        `insert into wbk.peopletemp
+        (
+            wbkcaseid, ident, name, gender, dob, nationality, race, tel,
+            address, state, district, locality, occupation
+            
+        )
+        select c.id $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 
+        $11, $12
+        from wbk.wbkcase c
+        where c.name=$13        
+        on conflict on constraint people_ident_key
+			do 
+				update set name=$2, gender=$3, dob=$4, nationality=$5,
+                  race=$6, tel=$7, address=$8, state=$9, district=$10,
+                  locality=$11, occupation=$12
+				where peopletemp.ident=$1
+                  and wbkcaseid=(select c.id
+                                from wbk.wbkcase c
+                                where c.name=$13)`
+        
+    _, err := conn.Exec(context.Background(), sql, 
+        cc.Ident, cc.Name, cc.Gender, cc.Dob, cc.Nationality, 
+        cc.Race, cc.Tel, address, state, district, 
+        locality, cc.Occupation, c.Casename)
+    if err != nil {
+        return err
+    }
+
+    // INSERT WBKCASE_PEOPLE
+    if c.Casename == "" || cc.Ident == "" {
+        return errors.New(util.INPUT_PARAMS_NOT_INITIALIZED)
+    }
+
+    if c.VerifiedBy == "" {
+        sql := 
+            `insert into wbk.wbkcase_people
+            (
+                wbkcaseid, peopleident, assignedtoik, hasbeenverified            
+            )
+            select c.id, $1, $3, $4
+            from wbk.wbkcase c
+            where c.name=$2
+            on conflict on constraint wbkcase_people_wbkcaseid_peopleident_key
+              do
+                update set assignedtoik=$3, hasbeenverified=$4
+                where wbkcase_people.wbkcaseid=(select c.id
+                                        from wbk.wbkcase c
+                                        where c.name=$2)
+                  and wbkcase_people.peopleident=$1`    
+
+        _, err = conn.Exec(context.Background(), sql, 
+            cc.Ident, c.Casename, c.AssignedToIk, false)
+    } else {
+        sql := 
+            `insert into wbk.wbkcase_people
+            (
+                wbkcaseid, peopleident, assignedtoik, 
+                hasbeenverified, verifiedby
+            )
+            select c.id, $1, $3, $4, $5
+            from wbk.wbkcase c
+            where c.name=$2
+            on conflict on constraint wbkcase_people_wbkcaseid_peopleident_key
+              do
+                update set assignedtoik=$3, hasbeenverified=$4, 
+                  verifiedby=$5
+                where wbkcase_people.wbkcaseid=(select c.id
+                                        from wbk.wbkcase c
+                                        where c.name=$2)
+                  and wbkcase_people.peopleident=$1`    
+    
+        _, err = conn.Exec(context.Background(), sql, 
+            cc.Ident, c.Casename, c.AssignedToIk, 
+            c.HasBeenVerified, c.VerifiedBy)
+    }
+    if err != nil {
+        return err
+    }
+    return nil
+}
+
+// When registration form is filled by close contact 
+// and then by healthcare staff.
+func RegNewCloseContactMode2(conn *pgxpool.Pool, c WbkcaseMetadata, cc CloseContact,
     address string, locality string, district string, state string) error {
 
     // INSERT PEOPLE
@@ -916,5 +998,13 @@ func RegNewCloseContactHandler(w http.ResponseWriter, r *http.Request) {
             }   
         }
     }
-            
+    ccRegStatus := CloseContactRegStatus{
+        CCRegStatus: "1",
+    }
+    outputJson, err := json.MarshalIndent(ccRegStatus, "", "")
+    if err != nil {        
+        util.SendInternalServerErrorStatus(w, err)
+        return 
+    }
+    fmt.Fprintf(w, "%s", outputJson)            
 }

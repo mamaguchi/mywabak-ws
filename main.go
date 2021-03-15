@@ -21,6 +21,7 @@ func main() {
 	http.HandleFunc("/people/upsert", mywabak.UpsertPeopleHandler)
 	http.HandleFunc("/people/update", mywabak.UpdatePeopleHandler)
 	http.HandleFunc("/wbkcase/people/add", mywabak.AddPeopleToWbkcaseHandler)
+	http.HandleFunc("/wbkcase/people/reg", mywabak.RegNewCloseContactHandler)
 	http.HandleFunc("/wbkcase/people/update", mywabak.UpdatePeopleInWbkcaseHandler)
 	http.HandleFunc("/wbkcase/people/del", mywabak.DelPeopleFromWbkcaseHandler)
 	http.HandleFunc("/hso/add", mywabak.AddNewHSOHandler)

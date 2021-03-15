@@ -20,18 +20,21 @@ import (
 )
 
 type Wbkcase struct {
-	Casename string	    `json:"casename"`
-    Peopleident string  `json:"peopleident"`
-    Contactto string    `json:"contactto"`
-    Lastcontact string  `json:"lastcontact"`
-    Symptoms []string   `json:"symptoms"`
-    Onset string        `json:"onset"`
-    Workloc string      `json:"workloc"`
-    Remarks string      `json:"remarks"`
-    Casetype string     `json:"casetype"`
-    Caseorigin string   `json:"caseorigin"`
-    Livedeadstat string `json:"livedeadstat"`
-    Causeofdeath string `json:"causeofdeath"`
+	Casename string	        `json:"casename"`
+    Peopleident string      `json:"peopleident"`
+    Contactto string        `json:"contactto"`
+    Lastcontact string      `json:"lastcontact"`
+    Symptoms []string       `json:"symptoms"`
+    Onset string            `json:"onset"`
+    Workloc string          `json:"workloc"`
+    Remarks string          `json:"remarks"`
+    Casetype string         `json:"casetype"`
+    Caseorigin string       `json:"caseorigin"`
+    Livedeadstat string     `json:"livedeadstat"`
+    Causeofdeath string     `json:"causeofdeath"`
+    AssignedToIk string     `json:"assignedToIk"`
+    HasBeenVerified bool    `json:"hasBeenVerified"`
+    VerifiedBy string       `json:"verifiedBy"`
 }
 
 type WbkcasePeopleError struct {
@@ -56,6 +59,38 @@ type People struct {
     Locality string       `json:"locality"`
     Occupation string     `json:"occupation"`
     Comorbid []string     `json:"comorbid"`
+}
+
+type CloseContact struct {
+	Name string 	      `json:"name"`
+    Ident string          `json:"ident"`
+    Gender string         `json:"gender"`
+    Dob string            `json:"dob"` //kiv change to time.Time type
+    Nationality string    `json:"nationality"`
+    Race string           `json:"race"`
+    Tel string            `json:"tel"`    
+    Occupation string     `json:"occupation"`
+    Comorbid []string     `json:"comorbid"`
+}
+
+type CloseContactPerAddress struct {
+    Address string                 `json:"address"`
+    Locality string                `json:"locality"`
+    District string                `json:"district"`
+    State string                   `json:"state"`
+    CloseContacts []CloseContact   `json:"closeContacts"`
+}
+
+type WbkcaseMetadata struct {
+    Casename string	        `json:"casename"`
+    AssignedToIk string     `json:"assignedToIk"`
+    HasBeenVerified bool    `json:"hasBeenVerified"`
+    VerifiedBy string       `json:"verifiedBy"`
+}
+
+type CloseContactRegistration struct {
+    Wbkcase WbkcaseMetadata                      `json:"wbkcase"`
+    CloseContactRegs []CloseContactPerAddress    `json:"closeContactRegs"`
 }
 
 type PosCases struct {
@@ -290,23 +325,51 @@ func GetPeopleBasicHandler(w http.ResponseWriter, r *http.Request) {
     fmt.Printf("%s\n", peopleJson)
     fmt.Fprintf(w, "%s", peopleJson)
 }
-
+        // ident: '',
+        // name: '',
+        // gender: '',
+        // dob: '',
+        // nationality: '',
+        // race: '',
+        // tel: '',
+        // address: '',
+        // state: '',
+        // district: '',
+        // locality: '',
+        // occupation: '',
 func AddPeopleToWbkcase(conn *pgxpool.Pool, c Wbkcase) error {
     if c.Casename == "" || c.Peopleident == "" {
         return errors.New(util.INPUT_PARAMS_NOT_INITIALIZED)
     }
-    
-    sql := 
-        `insert into wbk.wbkcase_people
-        (
-            wbkcaseid, peopleident
-        )
-        select c.id, $1
-        from wbk.wbkcase c
-        where c.name=$2`    
+    var err error
 
-    _, err := conn.Exec(context.Background(), sql, 
-        c.Peopleident, c.Casename)
+    if c.VerifiedBy == "" {
+        sql := 
+            `insert into wbk.wbkcase_people
+            (
+                wbkcaseid, peopleident, assignedtoik, hasbeenverified            
+            )
+            select c.id, $1, $3, $4, $5
+            from wbk.wbkcase c
+            where c.name=$2`    
+
+        _, err = conn.Exec(context.Background(), sql, 
+            c.Peopleident, c.Casename, c.AssignedToIk, false)
+    } else {
+        sql := 
+            `insert into wbk.wbkcase_people
+            (
+                wbkcaseid, peopleident, assignedtoik, 
+                hasbeenverified, verifiedby
+            )
+            select c.id, $1, $3, $4, $5
+            from wbk.wbkcase c
+            where c.name=$2`    
+    
+        _, err = conn.Exec(context.Background(), sql, 
+            c.Peopleident, c.Casename, c.AssignedToIk, 
+            c.HasBeenVerified, c.VerifiedBy)
+    }
     if err != nil {
         return err
     }
@@ -733,4 +796,125 @@ func UpdateHSOHandler(w http.ResponseWriter, r *http.Request) {
         util.SendInternalServerErrorStatus(w, err)
         return 
     }    
+}
+
+func RegNewCloseContact(conn *pgxpool.Pool, c WbkcaseMetadata, cc CloseContact,
+    address string, locality string, district string, state string) error {
+
+    // INSERT PEOPLE
+    sql := 
+        `insert into wbk.people
+        (
+            ident, name, gender, dob, nationality, race, tel,
+            address, state, district, locality, occupation
+            
+        )
+        values
+        (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 
+            $11, $12
+        )
+        on conflict on constraint people_ident_key
+			do 
+				update set name=$2, gender=$3, dob=$4, nationality=$5,
+                  race=$6, tel=$7, address=$8, state=$9, district=$10,
+                  locality=$11, occupation=$12
+				where people.ident=$1`
+        
+    _, err := conn.Exec(context.Background(), sql, 
+        cc.Ident, cc.Name, cc.Gender, cc.Dob, cc.Nationality, 
+        cc.Race, cc.Tel, address, state, district, 
+        locality, cc.Occupation)
+    if err != nil {
+        return err
+    }
+
+    // INSERT WBKCASE_PEOPLE
+    if c.Casename == "" || cc.Ident == "" {
+        return errors.New(util.INPUT_PARAMS_NOT_INITIALIZED)
+    }
+
+    if c.VerifiedBy == "" {
+        sql := 
+            `insert into wbk.wbkcase_people
+            (
+                wbkcaseid, peopleident, assignedtoik, hasbeenverified            
+            )
+            select c.id, $1, $3, $4
+            from wbk.wbkcase c
+            where c.name=$2
+            on conflict on constraint wbkcase_people_wbkcaseid_peopleident_key
+              do
+                update set assignedtoik=$3, hasbeenverified=$4
+                where wbkcase_people.wbkcaseid=(select c.id
+                                        from wbk.wbkcase c
+                                        where c.name=$2)
+                  and wbkcase_people.peopleident=$1`    
+
+        _, err = conn.Exec(context.Background(), sql, 
+            cc.Ident, c.Casename, c.AssignedToIk, false)
+    } else {
+        sql := 
+            `insert into wbk.wbkcase_people
+            (
+                wbkcaseid, peopleident, assignedtoik, 
+                hasbeenverified, verifiedby
+            )
+            select c.id, $1, $3, $4, $5
+            from wbk.wbkcase c
+            where c.name=$2
+            on conflict on constraint wbkcase_people_wbkcaseid_peopleident_key
+              do
+                update set assignedtoik=$3, hasbeenverified=$4, 
+                  verifiedby=$5
+                where wbkcase_people.wbkcaseid=(select c.id
+                                        from wbk.wbkcase c
+                                        where c.name=$2)
+                  and wbkcase_people.peopleident=$1`    
+    
+        _, err = conn.Exec(context.Background(), sql, 
+            cc.Ident, c.Casename, c.AssignedToIk, 
+            c.HasBeenVerified, c.VerifiedBy)
+    }
+    if err != nil {
+        return err
+    }
+    return nil
+}
+
+func RegNewCloseContactHandler(w http.ResponseWriter, r *http.Request) {
+    util.SetDefaultHeader(w)
+    if (r.Method == "OPTIONS") { return }
+    fmt.Println("[RegNewCloseContactHandler] request received")    
+
+    // VERIFY AUTH TOKEN
+    // authToken := strings.Split(r.Header.Get("Authorization"), " ")[1]
+    // if !auth.VerifyTokenHMAC(authToken) {
+    //     util.SendUnauthorizedStatus(w)
+    //     return
+    // }   
+
+    var ccr CloseContactRegistration
+    err := json.NewDecoder(r.Body).Decode(&ccr)
+    if err != nil {
+        util.SendInternalServerErrorStatus(w, err)
+        return
+    }
+
+    db.CheckDbConn()
+    for _, reg := range ccr.CloseContactRegs {
+        for _, cc := range reg.CloseContacts {
+            
+            err = RegNewCloseContact(db.Conn, ccr.Wbkcase, cc, 
+                reg.Address, reg.Locality, reg.District, reg.State)            
+            if err != nil {                
+                if err.Error() == util.INPUT_PARAMS_NOT_INITIALIZED {
+                    util.SendBadReqStatus(w, err)
+                    return
+                }                                         
+                util.SendInternalServerErrorStatus(w, err)
+            }   
+        }
+    }
+            
 }

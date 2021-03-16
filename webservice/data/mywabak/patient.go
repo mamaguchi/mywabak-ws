@@ -908,10 +908,19 @@ func DISABLED_RegNewCloseContactMode(conn *pgxpool.Pool, c WbkcaseMetadata, cc C
 func RegNewCloseContact(conn *pgxpool.Pool, c WbkcaseMetadata, cc CloseContactIn,
     address string, locality string, district string, state string) error {
 
+    if c.Casename == "" || cc.Ident == "" {
+        return errors.New(util.INPUT_PARAMS_NOT_INITIALIZED)
+    }
+    
     var err error 
 
+    /* 
+       ========================
+       UPSERT PEOPLETEMP/PEOPLE 
+       ========================
+    */ 
     if c.Mode == "1" {    
-        // INSERT PEOPLETEMP
+        // UPSERT PEOPLETEMP
         sql := 
             `insert into wbk.peopletemp
             (
@@ -942,7 +951,7 @@ func RegNewCloseContact(conn *pgxpool.Pool, c WbkcaseMetadata, cc CloseContactIn
         }
 
     } else if c.Mode == "2" || c.Mode == "3" {
-        // INSERT PEOPLE
+        // UPSERT PEOPLE
         sql := 
             `insert into wbk.people
             (
@@ -969,18 +978,17 @@ func RegNewCloseContact(conn *pgxpool.Pool, c WbkcaseMetadata, cc CloseContactIn
         if err != nil {
             return err
         }   
-        
-        
-        // TODO: Add code to update wbk.wbkcase_people table
-
-
     } 
     
+    /* 
+       =======================
+       DELETE PEOPLETEMP ENTRY
+       =======================
+    */ 
     if c.Mode == "2" {
-        // DELETE PEOPLETEMP ENTRY
-        sql := 
-            `delete from wbk.peopletemp
-            where ident=$1`
+        sql := `delete from wbk.peopletemp
+                where ident=$1`
+
         _, err = conn.Exec(context.Background(), sql, 
             cc.Ident)
         if err != nil {
@@ -988,11 +996,11 @@ func RegNewCloseContact(conn *pgxpool.Pool, c WbkcaseMetadata, cc CloseContactIn
         }
     }
 
-    // INSERT WBKCASE_PEOPLE
-    if c.Casename == "" || cc.Ident == "" {
-        return errors.New(util.INPUT_PARAMS_NOT_INITIALIZED)
-    }
-
+    /* 
+       =====================
+       UPSERT WBKCASE_PEOPLE
+       =====================
+    */     
     if c.VerifiedBy == "" {
         sql := 
             `insert into wbk.wbkcase_people

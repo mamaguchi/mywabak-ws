@@ -17,6 +17,7 @@ func main() {
 	// myWabak
 	http.HandleFunc("/poscases", mywabak.GetPosCasesPCRHandler)
 	http.HandleFunc("/cc/get", mywabak.GetCloseContactsHandler)
+	http.HandleFunc("/cc/new/get", mywabak.GetNewCCByCaseAndIKHandler)
 	http.HandleFunc("/people/get", mywabak.GetPeopleBasicHandler)
 	http.HandleFunc("/people/upsert", mywabak.UpsertPeopleHandler)
 	http.HandleFunc("/people/update", mywabak.UpdatePeopleHandler)

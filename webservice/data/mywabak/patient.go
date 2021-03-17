@@ -64,6 +64,8 @@ type People struct {
 type CloseContactIn struct {
 	Name string 	      `json:"name"`
     Ident string          `json:"ident"`
+    //Unverified Ident
+    UVIdent string        `json:"uvIdent"` 
     Gender string         `json:"gender"`
     Dob string            `json:"dob"` //kiv change to time.Time type
     Nationality string    `json:"nationality"`
@@ -76,6 +78,14 @@ type CloseContactIn struct {
     Symptoms []string     `json:"symptoms"`
     Onset string          `json:"onset"`
     Workloc string        `json:"workloc"`
+}
+
+type CloseContactsIn struct {
+    Address string                 `json:"address"`
+    Locality string                `json:"locality"`
+    District string                `json:"district"`
+    State string                   `json:"state"`
+    CloseContacts []CloseContactIn `json:"closeContacts"`
 }
 
 // KIV to remove this struct
@@ -110,14 +120,6 @@ type NewCloseContactOut struct {
     Locality string       `json:"locality"`
     District string       `json:"district"`
     State string          `json:"state"`
-}
-
-type CloseContactsIn struct {
-    Address string                 `json:"address"`
-    Locality string                `json:"locality"`
-    District string                `json:"district"`
-    State string                   `json:"state"`
-    CloseContacts []CloseContactIn `json:"closeContacts"`
 }
 
 type CloseContactsOut struct {
@@ -1009,10 +1011,20 @@ func RegNewCloseContact(conn *pgxpool.Pool, c WbkcaseMetadata, cc CloseContactIn
     
     /* 
        =======================
-       DELETE PEOPLETEMP ENTRY
+       DELETE PEOPLETEMP ENTRY 
        =======================
     */ 
     if c.Mode == "2" {
+        sql := `delete from wbk.peopletemp
+                where ident=$1`
+       
+        _, err = conn.Exec(context.Background(), sql, 
+            cc.UVIdent)
+        if err != nil {
+            return err
+        }
+    }
+    if c.Mode == "3" {
         sql := `delete from wbk.peopletemp
                 where ident=$1`
 
@@ -1099,7 +1111,7 @@ func RegNewCloseContact(conn *pgxpool.Pool, c WbkcaseMetadata, cc CloseContactIn
                     where wbkcase_people.wbkcaseid=(select c.id
                                             from wbk.wbkcase c
                                             where c.name=$2)
-                    and wbkcase_people.peopleident=$1`    
+                      and wbkcase_people.peopleident=$1`    
         
             _, err = conn.Exec(context.Background(), sql, 
                 cc.Ident, c.Casename, c.AssignedToIk, 
@@ -1111,6 +1123,27 @@ func RegNewCloseContact(conn *pgxpool.Pool, c WbkcaseMetadata, cc CloseContactIn
     if err != nil {
         return err
     }
+
+    /* 
+       =================================================
+       DELETE WBKCASE_PEOPLE ENTRY WITH UNVERIFIED IDENT
+       =================================================
+    */ 
+    if c.Mode == "2" && cc.Ident != cc.UVIdent {
+        sql := `delete from wbk.wbkcase_people
+                where wbkcaseid=(select c.id
+                                from wbk.wbkcase c
+                                where c.name=$2)
+                  and peopleident=$1`
+       
+        _, err = conn.Exec(context.Background(), sql, 
+            cc.UVIdent, c.Casename)
+        if err != nil {
+            return err
+        }
+    }
+
+
 
     return nil
 }

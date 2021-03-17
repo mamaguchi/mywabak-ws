@@ -70,8 +70,7 @@ type CloseContactIn struct {
     Race string           `json:"race"`
     Tel string            `json:"tel"`    
     Occupation string     `json:"occupation"`
-    // Comorbid []string     `json:"comorbid"`    
-    Comorbid interface{}    `json:"comorbid"`    
+    Comorbid []string     `json:"comorbid"`    
     Contactto string      `json:"contactto"`
     Lastcontact string    `json:"lastcontact"`
     Symptoms []string     `json:"symptoms"`
@@ -79,7 +78,25 @@ type CloseContactIn struct {
     Workloc string        `json:"workloc"`
 }
 
+// KIV to remove this struct
 type CloseContactOut struct {
+	Name string 	      `json:"name"`
+    Ident string          `json:"ident"`
+    Gender string         `json:"gender"`
+    Dob string            `json:"dob"` //kiv change to time.Time type
+    Nationality string    `json:"nationality"`
+    Race string           `json:"race"`
+    Tel string            `json:"tel"`    
+    Occupation string     `json:"occupation"`
+    Comorbid []string     `json:"comorbid"`
+    Address string        `json:"address"`
+    Locality string       `json:"locality"`
+    District string       `json:"district"`
+    State string          `json:"state"`
+}
+
+type NewCloseContactOut struct {
+    Hasbeenreviewed bool  `json:"hasbeenreviewed"`
 	Name string 	      `json:"name"`
     Ident string          `json:"ident"`
     Gender string         `json:"gender"`
@@ -105,6 +122,10 @@ type CloseContactsIn struct {
 
 type CloseContactsOut struct {
     CloseContacts []CloseContactOut   `json:"closeContacts"`
+}
+
+type NewCloseContactsOut struct {
+    CloseContacts []NewCloseContactOut   `json:"closeContacts"`
 }
 
 type WbkcaseMetadata struct {
@@ -918,18 +939,7 @@ func RegNewCloseContact(conn *pgxpool.Pool, c WbkcaseMetadata, cc CloseContactIn
         return errors.New(util.INPUT_PARAMS_NOT_INITIALIZED)
     }
     
-    var err error 
-
-    var comorbid []string 
-    switch cc.Comorbid.(type) {
-    case string:
-        comorbidStr := cc.Comorbid.(string)
-        comorbid = append(comorbid, comorbidStr)
-    case []string:
-        comorbid = cc.Comorbid.([]string)
-    default:
-        return errors.New("Invalid comorbid type, it's neither string nor []string")
-    }
+    var err error     
 
     /* 
        ========================
@@ -962,7 +972,7 @@ func RegNewCloseContact(conn *pgxpool.Pool, c WbkcaseMetadata, cc CloseContactIn
         _, err = conn.Exec(context.Background(), sql, 
             cc.Ident, cc.Name, cc.Gender, cc.Dob, cc.Nationality, 
             cc.Race, cc.Tel, address, state, district, 
-            locality, cc.Occupation, comorbid, c.Casename)
+            locality, cc.Occupation, cc.Comorbid, c.Casename)
         if err != nil {
             return err
         }
@@ -991,7 +1001,7 @@ func RegNewCloseContact(conn *pgxpool.Pool, c WbkcaseMetadata, cc CloseContactIn
         _, err = conn.Exec(context.Background(), sql, 
             cc.Ident, cc.Name, cc.Gender, cc.Dob, cc.Nationality, 
             cc.Race, cc.Tel, address, state, district, 
-            locality, cc.Occupation, comorbid)
+            locality, cc.Occupation, cc.Comorbid)
         if err != nil {
             return err
         }   
@@ -1039,33 +1049,64 @@ func RegNewCloseContact(conn *pgxpool.Pool, c WbkcaseMetadata, cc CloseContactIn
         _, err = conn.Exec(context.Background(), sql, 
             cc.Ident, c.Casename, c.AssignedToIk, false)
     } else {
-        // Mode 2
-        sql := 
-            `insert into wbk.wbkcase_people
-            (
-                wbkcaseid, peopleident, assignedtoik, 
-                hasbeenverified, verifiedby,
-                contactto, lastcontact, symptoms, onset, workloc
-            )
-            select c.id, $1, $3, $4, $5, $6, $7, $8, $9, $10
-            from wbk.wbkcase c
-            where c.name=$2
-            on conflict on constraint wbkcase_people_wbkcaseid_peopleident_key
-              do
-                update set assignedtoik=$3, hasbeenverified=$4, 
-                  verifiedby=$5, 
-                  contactto=$6, lastcontact=$7, symptoms=$8, 
-                  onset=$9, workloc=$10
-                where wbkcase_people.wbkcaseid=(select c.id
-                                        from wbk.wbkcase c
-                                        where c.name=$2)
-                  and wbkcase_people.peopleident=$1`    
-    
-        _, err = conn.Exec(context.Background(), sql, 
-            cc.Ident, c.Casename, c.AssignedToIk, 
-            c.HasBeenVerified, c.VerifiedBy,
-            cc.Contactto, cc.Lastcontact, cc.Symptoms,
-            cc.Onset, cc.Workloc)
+        // Mode 2 & Mode 3
+        // ---------------
+        // Cover both implicit & explicit no symptoms
+        if (len(cc.Symptoms)==0 || cc.Symptoms[0]=="nosx") {
+            sql := 
+                `insert into wbk.wbkcase_people
+                (
+                    wbkcaseid, peopleident, assignedtoik, 
+                    hasbeenverified, verifiedby,
+                    contactto, lastcontact, symptoms, onset, workloc
+                )
+                select c.id, $1, $3, $4, $5, $6, $7, $8, null, $9
+                from wbk.wbkcase c
+                where c.name=$2
+                on conflict on constraint wbkcase_people_wbkcaseid_peopleident_key
+                do
+                    update set assignedtoik=$3, hasbeenverified=$4, 
+                    verifiedby=$5, 
+                    contactto=$6, lastcontact=$7, symptoms=$8, 
+                    onset=null, workloc=$9
+                    where wbkcase_people.wbkcaseid=(select c.id
+                                            from wbk.wbkcase c
+                                            where c.name=$2)
+                    and wbkcase_people.peopleident=$1`    
+        
+            _, err = conn.Exec(context.Background(), sql, 
+                cc.Ident, c.Casename, c.AssignedToIk, 
+                c.HasBeenVerified, c.VerifiedBy,
+                cc.Contactto, cc.Lastcontact, cc.Symptoms,
+                cc.Workloc)
+        } else {
+            sql := 
+                `insert into wbk.wbkcase_people
+                (
+                    wbkcaseid, peopleident, assignedtoik, 
+                    hasbeenverified, verifiedby,
+                    contactto, lastcontact, symptoms, onset, workloc
+                )
+                select c.id, $1, $3, $4, $5, $6, $7, $8, $9, $10
+                from wbk.wbkcase c
+                where c.name=$2
+                on conflict on constraint wbkcase_people_wbkcaseid_peopleident_key
+                do
+                    update set assignedtoik=$3, hasbeenverified=$4, 
+                    verifiedby=$5, 
+                    contactto=$6, lastcontact=$7, symptoms=$8, 
+                    onset=$9, workloc=$10
+                    where wbkcase_people.wbkcaseid=(select c.id
+                                            from wbk.wbkcase c
+                                            where c.name=$2)
+                    and wbkcase_people.peopleident=$1`    
+        
+            _, err = conn.Exec(context.Background(), sql, 
+                cc.Ident, c.Casename, c.AssignedToIk, 
+                c.HasBeenVerified, c.VerifiedBy,
+                cc.Contactto, cc.Lastcontact, cc.Symptoms,
+                cc.Onset, cc.Workloc)
+        }
     }
     if err != nil {
         return err
@@ -1123,6 +1164,7 @@ func GetNewCCByCaseAndIK(conn *pgxpool.Pool, c WbkcaseMetadata) ([]byte, error) 
     sql := 
         `select pt.name, pt.ident, pt.gender, pt.dob::text,
            pt.nationality, pt.race, pt.tel, pt.occupation,
+           pt.comorbid,
            pt.address, pt.locality, pt.district, pt.state
          from wbk.wbkcase_people cp
            join wbk.peopletemp pt
@@ -1139,7 +1181,7 @@ func GetNewCCByCaseAndIK(conn *pgxpool.Pool, c WbkcaseMetadata) ([]byte, error) 
         return nil, err
     }
 
-    var cco CloseContactsOut
+    var cco NewCloseContactsOut
     for rows.Next() {
         var name string 
         var ident string 
@@ -1149,18 +1191,20 @@ func GetNewCCByCaseAndIK(conn *pgxpool.Pool, c WbkcaseMetadata) ([]byte, error) 
         var race string 
         var tel string 
         var occupation string  
+        var comorbid []string 
         var address string 
         var locality string 
         var district string 
         var state string        
 
         err = rows.Scan(&name, &ident, &gender, &dob,
-            &nationality, &race, &tel, &occupation,
+            &nationality, &race, &tel, &occupation, &comorbid,
             &address, &locality, &district, &state)
         if err != nil {
             return nil, err 
         }
-        cc := CloseContactOut{
+        cc := NewCloseContactOut{
+            Hasbeenreviewed: false,
             Name: name,
             Ident: ident,
             Gender: gender, 
@@ -1169,6 +1213,7 @@ func GetNewCCByCaseAndIK(conn *pgxpool.Pool, c WbkcaseMetadata) ([]byte, error) 
             Race: race,
             Tel: tel,
             Occupation: occupation,
+            Comorbid: comorbid,
             Address: address,
             Locality: locality,
             District: district,

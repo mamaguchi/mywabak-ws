@@ -28,6 +28,8 @@ func main() {
 	http.HandleFunc("/hso/add", mywabak.AddNewHSOHandler)
 	http.HandleFunc("/hso/update", mywabak.UpdateHSOHandler)
 	http.HandleFunc("/hso/del", mywabak.DelHSOHandler)
+	http.HandleFunc("/staff/get", mywabak.GetStaffsByOrgHandler)
+	http.HandleFunc("/staff/assigned/get", mywabak.GetAssignedStaffsByOrgAndCaseHandler)
 	// ACD
 	http.HandleFunc("/acd/get", mywabak.GetACDListHandler)
 	http.HandleFunc("/acd/upsert", mywabak.UpsertACDHandler)

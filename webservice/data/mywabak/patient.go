@@ -147,6 +147,30 @@ type CloseContactRegStatus struct {
     CCRegStatus string      `json:"ccRegStatus"`
 }
 
+type StaffsByOrgIn struct {
+    HealthOrg string        `json:"healthOrg"`
+}
+
+type StaffsByOrgOut struct {
+    Staffs []HealthStaff    `json:"staffs"`
+}
+
+type AssignedStaffsByCaseAndOrgIn struct {
+    HealthOrg string        `json:"healthOrg"`
+    Casename string         `json:"casename"`
+}
+
+type AssignedStaffsByCaseAndOrgOut struct {
+    Staffs []HealthStaff    `json:"staffs"`
+}
+
+type HealthStaff struct {
+    Name string             `json:"name"`
+    Ident string            `json:"ident"`
+    // Position string         `json:"position"`
+    // Unit string             `json:"unit"`
+}
+
 type CloseContactSearchStatus struct {
     CCSearchStatus string      `json:"ccSearchStatus"`
 }
@@ -1286,4 +1310,143 @@ func GetNewCCByCaseAndIKHandler(w http.ResponseWriter, r *http.Request) {
     }
     fmt.Printf("%s\n", closeContactsJson)
     fmt.Fprintf(w, "%s", closeContactsJson)
+}
+
+func GetStaffsByOrg(conn *pgxpool.Pool, si StaffsByOrgIn) ([]byte, error) {
+    sql := 
+        `select s.name, s.ident, s.position, s.unit
+         from wbk.staff s
+         where s.organization=$1`
+
+    rows, err := conn.Query(context.Background(), sql, 
+        si.HealthOrg)
+    if err != nil {
+        return nil, err 
+    }
+
+    // var so StaffsByOrgOut
+    // m := make(map[string][]HealthStaff)
+    n := make(map[string]map[string][]HealthStaff)
+    for rows.Next() {
+        var name string 
+        var ident string 
+        var position string 
+        var unit string 
+
+        err = rows.Scan(&name, &ident, &position, &unit)
+        if err != nil {
+            return nil, err 
+        }
+        staff := HealthStaff{
+            Name: name,
+            Ident: ident,
+            // Position: position,
+            // Unit: unit,
+        }
+        // so.Staffs = append(so.Staffs, staff)
+        // m[unit] = append(m[unit], staff)
+        if n[position]==nil {
+            m := make(map[string][]HealthStaff)
+            n[position] = m 
+            n[position][unit] = append(n[position][unit], staff)
+        } else {
+            n[position][unit] = append(n[position][unit], staff)
+        }
+    }
+    // outputJson, err := json.MarshalIndent(so, "", "")
+    // outputJson, err := json.MarshalIndent(m, "", "")
+    outputJson, err := json.MarshalIndent(n, "", "")
+    return outputJson, err
+}
+
+func GetStaffsByOrgHandler(w http.ResponseWriter, r *http.Request) {
+    util.SetDefaultHeader(w)
+    if (r.Method == "OPTIONS") { return }
+    fmt.Println("[GetStaffsByOrgHandler] request received")    
+
+    // VERIFY AUTH TOKEN
+    // authToken := strings.Split(r.Header.Get("Authorization"), " ")[1]
+    // if !auth.VerifyTokenHMAC(authToken) {
+    //     util.SendUnauthorizedStatus(w)
+    //     return
+    // }   
+
+    var si StaffsByOrgIn
+    err := json.NewDecoder(r.Body).Decode(&si)
+    if err != nil {
+        util.SendInternalServerErrorStatus(w, err)
+        return
+    }
+    
+    db.CheckDbConn()
+    healthStaffsJson, err := GetStaffsByOrg(db.Conn, si)
+    if err != nil {        
+        util.SendInternalServerErrorStatus(w, err)
+        return 
+    }
+    fmt.Printf("%s\n", healthStaffsJson)
+    fmt.Fprintf(w, "%s", healthStaffsJson)
+}
+
+func GetAssignedStaffsByOrgAndCase(conn *pgxpool.Pool, asi AssignedStaffsByCaseAndOrgIn) ([]byte, error) {
+    sql := 
+        `select s.name, s.ident
+         from wbk.staff s
+           join wbk.wbkcase c
+             on s.ident=any(c.assignedstaffs)
+         where c.name=$1
+           and s.organization=$2`
+
+    rows, err := conn.Query(context.Background(), sql, 
+        asi.Casename, asi.HealthOrg)
+    if err != nil {
+        return nil, err 
+    }
+
+    var aso AssignedStaffsByCaseAndOrgOut
+    for rows.Next() {
+        var name string 
+        var ident string 
+
+        err = rows.Scan(&name, &ident)
+        if err != nil {
+            return nil, err 
+        }
+        staff := HealthStaff{
+            Name: name,
+            Ident: ident,
+        }
+        aso.Staffs = append(aso.Staffs, staff)
+    }
+    outputJson, err := json.MarshalIndent(aso, "", "")
+    return outputJson, err
+}
+
+func GetAssignedStaffsByOrgAndCaseHandler(w http.ResponseWriter, r *http.Request) {
+    util.SetDefaultHeader(w)
+    if (r.Method == "OPTIONS") { return }
+    fmt.Println("[GetAssignedStaffsByOrgAndCaseHandler] request received")    
+
+    // VERIFY AUTH TOKEN
+    // authToken := strings.Split(r.Header.Get("Authorization"), " ")[1]
+    // if !auth.VerifyTokenHMAC(authToken) {
+    //     util.SendUnauthorizedStatus(w)
+    //     return
+    // }   
+
+    var asi AssignedStaffsByCaseAndOrgIn
+    err := json.NewDecoder(r.Body).Decode(&asi)
+    if err != nil {
+        util.SendInternalServerErrorStatus(w, err)
+        return
+    }
+    
+    db.CheckDbConn()
+    healthStaffsJson, err := GetAssignedStaffsByOrgAndCase(db.Conn, asi)
+    if err != nil {        
+        util.SendInternalServerErrorStatus(w, err)
+        return 
+    }
+    fmt.Printf("%s\n", healthStaffsJson)
+    fmt.Fprintf(w, "%s", healthStaffsJson)
 }

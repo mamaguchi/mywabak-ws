@@ -147,6 +147,17 @@ type CloseContactRegStatus struct {
     CCRegStatus string      `json:"ccRegStatus"`
 }
 
+type HealthStaff struct {
+    Name string             `json:"name"`
+    Ident string            `json:"ident"`
+}
+
+type HealthStaffByCase struct {
+    Name string             `json:"name"`
+    Ident string            `json:"ident"`
+    Assigned bool           `json:"assigned"`
+}
+
 type StaffsByOrgIn struct {
     HealthOrg string        `json:"healthOrg"`
 }
@@ -160,19 +171,62 @@ type AssignedStaffsByCaseAndOrgIn struct {
     Casename string         `json:"casename"`
 }
 
-type AssignedStaffsByCaseAndOrgOut struct {
-    Staffs []HealthStaff    `json:"staffs"`
+// [DEPRECATED]
+// type AssignedStaffsByCaseAndOrgOut struct {
+//     Staffs []HealthStaff    `json:"staffs"`
+// }
+
+type AssignedStaffsByOrgOut struct {    
+    Staffs map[string]map[string][]HealthStaff `json:"staffs"`
 }
 
-type HealthStaff struct {
-    Name string             `json:"name"`
-    Ident string            `json:"ident"`
-    // Position string         `json:"position"`
-    // Unit string             `json:"unit"`
+type AssignedStaffsByCaseAndOrgOut struct {
+    Begindt string       `json:"begindt"`
+    Description string   `json:"description"`
+    District string      `json:"district"`
+    State string         `json:"state"`
+    Staffs map[string]map[string][]HealthStaffByCase `json:"staffs"`
+}
+
+type AssignedStaffsByCaseIn struct {
+    Casename string         `json:"casename"`
+    Begindt string          `json:"begindt"`
+    Enddt string            `json:"enddt"`
+    Description string      `json:"description"`
+    State string            `json:"state"`
+    District string         `json:"district"`
+    AssignedStaffs []string `json:"assignedStaffs"`
+}
+
+type AddWbkcaseStatus struct {
+    AddStatus string          `json:"addStatus"`
+}
+
+type UpdateAssignedStaffsByCaseStatus struct {
+    UpdateStatus string      `json:"updateStatus"`
 }
 
 type CloseContactSearchStatus struct {
     CCSearchStatus string      `json:"ccSearchStatus"`
+}
+
+type CasesListByDistrictIn struct {
+    State string            `json:"state"`
+    District string         `json:"district"`
+}
+
+type CasesListByDistrictOut struct {
+    Cases []CaseOut         `json:"cases"`
+    GetStatus string        `json:"getStatus"`
+}
+
+type CaseOut struct {
+    Casename string         `json:"casename"`
+    BeginDt string          `json:"beginDt"`
+    NumPosCase int          `json:"numPosCase"`
+    ResultDt string         `json:"resultDt"`
+    NumCC int               `json:"numCC"`
+    Clustername string      `json:"clustername"`
 }
 
 type PosCases struct {
@@ -1311,21 +1365,24 @@ func GetNewCCByCaseAndIKHandler(w http.ResponseWriter, r *http.Request) {
     fmt.Printf("%s\n", closeContactsJson)
     fmt.Fprintf(w, "%s", closeContactsJson)
 }
+// select staff.name, case when 
+// (select s.ident from wbk.staff s left join wbk.wbkcase 
+// c on s.ident=any(c.assignedstaffs) where c.name='' 
+// and s.organization='PKD Maran' and s.ident=staff.ident) 
+// is not null then 'yes' else 'no' end as TICK from wbk.staff;
 
 func GetStaffsByOrg(conn *pgxpool.Pool, si StaffsByOrgIn) ([]byte, error) {
     sql := 
         `select s.name, s.ident, s.position, s.unit
          from wbk.staff s
-         where s.organization=$1`
+         where s.organization=$1`    
 
     rows, err := conn.Query(context.Background(), sql, 
-        si.HealthOrg)
+        si.HealthOrg)  
     if err != nil {
         return nil, err 
     }
-
-    // var so StaffsByOrgOut
-    // m := make(map[string][]HealthStaff)
+   
     n := make(map[string]map[string][]HealthStaff)
     for rows.Next() {
         var name string 
@@ -1337,14 +1394,11 @@ func GetStaffsByOrg(conn *pgxpool.Pool, si StaffsByOrgIn) ([]byte, error) {
         if err != nil {
             return nil, err 
         }
+
         staff := HealthStaff{
             Name: name,
             Ident: ident,
-            // Position: position,
-            // Unit: unit,
         }
-        // so.Staffs = append(so.Staffs, staff)
-        // m[unit] = append(m[unit], staff)
         if n[position]==nil {
             m := make(map[string][]HealthStaff)
             n[position] = m 
@@ -1352,10 +1406,11 @@ func GetStaffsByOrg(conn *pgxpool.Pool, si StaffsByOrgIn) ([]byte, error) {
         } else {
             n[position][unit] = append(n[position][unit], staff)
         }
+    } 
+    output := AssignedStaffsByOrgOut{
+        Staffs: n,
     }
-    // outputJson, err := json.MarshalIndent(so, "", "")
-    // outputJson, err := json.MarshalIndent(m, "", "")
-    outputJson, err := json.MarshalIndent(n, "", "")
+    outputJson, err := json.MarshalIndent(output, "", "")
     return outputJson, err
 }
 
@@ -1388,7 +1443,106 @@ func GetStaffsByOrgHandler(w http.ResponseWriter, r *http.Request) {
     fmt.Fprintf(w, "%s", healthStaffsJson)
 }
 
-func GetAssignedStaffsByOrgAndCase(conn *pgxpool.Pool, asi AssignedStaffsByCaseAndOrgIn) ([]byte, error) {
+func AddWbkcase(conn *pgxpool.Pool, asi AssignedStaffsByCaseIn) error {
+    var err error
+    if asi.Enddt == "" {
+        sql := 
+        `insert into wbk.wbkcase
+        (
+            name, description, state, district, 
+            assignedstaffs, begindt
+        )
+        values
+        (
+            $1, $2, $3, $4, $5, $6
+        )`                     
+
+    _, err = conn.Exec(context.Background(), sql, 
+        asi.Casename, asi.Description,
+        asi.State, asi.District, asi.AssignedStaffs,
+        asi.Begindt)
+    } else {
+        sql := 
+            `insert into wbk.wbkcase
+            (
+                name, description, state, district, 
+                assignedstaffs, begindt, enddt
+            )
+            values
+            (
+                $1, $2, $3, $4, $5, $6, $7
+            )`                     
+
+        _, err = conn.Exec(context.Background(), sql, 
+            asi.Casename, asi.Description,
+            asi.State, asi.District, asi.AssignedStaffs,
+            asi.Begindt, asi.Enddt)
+    }    
+    if err != nil {
+        return err
+    }
+    return nil
+}
+
+func AddWbkcaseHandler(w http.ResponseWriter, r *http.Request) {
+    util.SetDefaultHeader(w)
+    if (r.Method == "OPTIONS") { return }
+    fmt.Println("[AddWbkcaseHandler] request received")    
+
+    // VERIFY AUTH TOKEN
+    // authToken := strings.Split(r.Header.Get("Authorization"), " ")[1]
+    // if !auth.VerifyTokenHMAC(authToken) {
+    //     util.SendUnauthorizedStatus(w)
+    //     return
+    // }   
+
+    var asi AssignedStaffsByCaseIn
+    err := json.NewDecoder(r.Body).Decode(&asi)
+    if err != nil {
+        util.SendInternalServerErrorStatus(w, err)
+        return
+    }
+    
+    db.CheckDbConn()
+    err = AddWbkcase(db.Conn, asi)
+    if err != nil {                                        
+        if pgerr, ok := err.(*pgconn.PgError); ok {
+			if pgerr.ConstraintName == "wbkcase_name_key" {
+				fmt.Fprintf(os.Stderr, "Unable to insert a new entry into wbkcase, because a same casename already exists: %v\n", pgerr)
+                addStatus := AddWbkcaseStatus{
+                    AddStatus: "CASENAMEEXISTS",
+                }
+                outputJson, err := json.MarshalIndent(addStatus, "", "")
+                if err != nil {
+                    util.SendInternalServerErrorStatus(w, err)
+                }
+                fmt.Fprintf(w, "%s", outputJson)
+                return
+			} else {
+				fmt.Fprintf(os.Stderr, "Unexpected postgres error trying to insert a wbkcase entry: %v\n", pgerr)
+                util.SendInternalServerErrorStatus(w, pgerr)
+                return
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "Unexpected error trying to insert a wbkcase entry: %v\n", err)
+            util.SendInternalServerErrorStatus(w, err)
+            return
+		}
+    }   
+    
+    addStatus := AddWbkcaseStatus{
+        AddStatus: "1",
+    }
+    outputJson, err := json.MarshalIndent(addStatus, "", "")
+    if err != nil {        
+        util.SendInternalServerErrorStatus(w, err)
+        return 
+    }
+    fmt.Fprintf(w, "%s", outputJson) 
+}
+
+/* [DEPRECATED]
+func GetAssignedStaffsByOrgAndCase_OLD(conn *pgxpool.Pool, asi AssignedStaffsByCaseAndOrgIn) ([]byte, error) {
     sql := 
         `select s.name, s.ident
          from wbk.staff s
@@ -1421,6 +1575,93 @@ func GetAssignedStaffsByOrgAndCase(conn *pgxpool.Pool, asi AssignedStaffsByCaseA
     outputJson, err := json.MarshalIndent(aso, "", "")
     return outputJson, err
 }
+*/
+
+func GetAssignedStaffsByOrgAndCase(conn *pgxpool.Pool, asi AssignedStaffsByCaseAndOrgIn) ([]byte, error) {       
+    sql1 := 
+        `select s.name, s.ident, s.position, s.unit,
+           case 
+             when (select staff.ident from wbk.staff
+                     left join wbk.wbkcase
+                       on staff.ident=any(wbkcase.assignedstaffs)
+                   where wbkcase.name=$1
+                     and staff.ident=s.ident) is not null then true
+           else
+             false 
+           end as assigned
+         from wbk.staff s
+         where s.organization=$2`    
+
+    sql2 := 
+        `select begindt::text, description, district, state
+         from wbk.wbkcase
+         where wbkcase.name=$1`
+
+    b := &pgx.Batch{}
+    b.Queue(sql1, asi.Casename, asi.HealthOrg)
+    b.Queue(sql2, asi.Casename)
+
+    var br pgx.BatchResults
+    br = conn.SendBatch(context.Background(), b) 
+
+    // Run sql1
+    rows, err := br.Query()
+    if err != nil {
+        return nil, err 
+    } 
+    n := make(map[string]map[string][]HealthStaffByCase)
+    for rows.Next() {
+        var name string 
+        var ident string 
+        var position string 
+        var unit string 
+        var assigned bool
+
+        err = rows.Scan(&name, &ident, &position, &unit, &assigned)
+        if err != nil {
+            return nil, err 
+        }
+
+        staff := HealthStaffByCase{
+            Name: name,
+            Ident: ident,
+            Assigned: assigned,
+        }
+        if n[position]==nil {
+            m := make(map[string][]HealthStaffByCase)
+            n[position] = m 
+            n[position][unit] = append(n[position][unit], staff)
+        } else {
+            n[position][unit] = append(n[position][unit], staff)
+        }
+    } 
+    
+    // Run sql2
+    row := br.QueryRow()
+    var begindt string
+    var description string 
+    var district string 
+    var state string 
+    err = row.Scan(&begindt, &description, &district, &state)
+    if err != nil {
+        return nil, err 
+    }
+
+    // Output
+    err = br.Close()
+    if err != nil { 
+        return nil, err
+    }
+    output := AssignedStaffsByCaseAndOrgOut{
+        Begindt: begindt,
+        Description: description,
+        District: district,
+        State: state,
+        Staffs: n,
+    }
+    outputJson, err := json.MarshalIndent(output, "", "")
+    return outputJson, err
+}
 
 func GetAssignedStaffsByOrgAndCaseHandler(w http.ResponseWriter, r *http.Request) {
     util.SetDefaultHeader(w)
@@ -1449,4 +1690,230 @@ func GetAssignedStaffsByOrgAndCaseHandler(w http.ResponseWriter, r *http.Request
     }
     fmt.Printf("%s\n", healthStaffsJson)
     fmt.Fprintf(w, "%s", healthStaffsJson)
+}
+
+func UpdateAssignedStaffsByCase(conn *pgxpool.Pool, asi AssignedStaffsByCaseIn) error {
+    // sql1 := 
+    //     `update wbk.wbkcase
+    //         set assignedstaffs=(assignedstaffs || $1),
+    //           description=$2,
+    //           states=(states || $3),
+    //           districts=(districts || $4) 
+    //         where name=$5`       
+         
+    // sql2 :=
+    //     `update wbk.wbkcase
+    //        set assignedstaffs=(select array_agg(distinct e)
+    //                             from unnest(assignedstaffs) e)
+    //      where name=$1`
+
+    b := &pgx.Batch{}
+
+    if asi.Enddt == "" {
+        sql1 := 
+            `update wbk.wbkcase
+                set assignedstaffs=$1,
+                  begindt=$2,
+                  enddt=null,
+                  description=$3,
+                  state=$4,
+                  district=$5
+                where name=$6`     
+                
+        b.Queue(sql1, asi.AssignedStaffs, 
+            asi.Begindt, asi.Description, 
+            asi.State, asi.District, asi.Casename)
+    } else {
+        sql1 := 
+        `update wbk.wbkcase
+            set assignedstaffs=$1,
+              begindt=$2,
+              enddt=$3,
+              description=$4,
+              state=$5,
+              district=$6
+            where name=$7`
+
+        b.Queue(sql1, asi.AssignedStaffs, 
+            asi.Begindt, asi.Enddt, asi.Description, 
+            asi.State, asi.District, asi.Casename)
+    }        
+    // b.Queue(sql2, asi.Casename)
+
+    var br pgx.BatchResults
+    br = conn.SendBatch(context.Background(), b)    
+    
+    for i:=0; i<b.Len(); i++ {
+        _, err := br.Exec()
+        if err != nil {
+            return err 
+        }
+    }
+
+    err := br.Close()
+    if err != nil { 
+        return err
+    }
+    return nil
+}
+
+func UpdateAssignedStaffsByCaseHandler(w http.ResponseWriter, r *http.Request) {
+    util.SetDefaultHeader(w)
+    if (r.Method == "OPTIONS") { return }
+    fmt.Println("[UpdateAssignedStaffsByCaseHandler] request received")    
+
+    // VERIFY AUTH TOKEN
+    // authToken := strings.Split(r.Header.Get("Authorization"), " ")[1]
+    // if !auth.VerifyTokenHMAC(authToken) {
+    //     util.SendUnauthorizedStatus(w)
+    //     return
+    // }   
+
+    var asi AssignedStaffsByCaseIn
+    err := json.NewDecoder(r.Body).Decode(&asi)
+    if err != nil {
+        util.SendInternalServerErrorStatus(w, err)
+        return
+    }
+    
+    db.CheckDbConn()
+    err = UpdateAssignedStaffsByCase(db.Conn, asi)
+    if err != nil {                      
+        util.SendInternalServerErrorStatus(w, err)        
+    }    
+
+    // updateStatus := UpdateAssignedStaffsByCaseStatus{
+    //     UpdateStatus: "1",
+    // }
+    // outputJson, err := json.MarshalIndent(updateStatus, "", "")
+    // if err != nil {        
+    //     util.SendInternalServerErrorStatus(w, err)
+    //     return 
+    // }
+    // fmt.Fprintf(w, "%s", outputJson)  
+}
+
+func GetCasesListByDistrict(conn *pgxpool.Pool, clbd CasesListByDistrictIn) ([]byte, error) {
+    sql :=
+        `select wbkcase.name, wbkcase.begindt::text, s1.numposcase, 
+           coalesce(s2.resultdt::text, '') as resultdt, 
+           s3.numcc, 
+           coalesce(s4.clustername, 'non-cluster') as clustername
+        from wbk.wbkcase wbkcase
+          left join lateral
+          (select count(p.ident) as numposcase
+             from wbk.wbkcase c
+               join wbk.wbkcase_people cp
+                 on c.id = cp.wbkcaseid
+               join wbk.people p
+                 on cp.peopleident = p.ident
+               join wbk.sampling s
+                 on p.ident = s.peopleident
+             where c.name = wbkcase.name
+               and s.wbkcaseid = c.id
+               and s.samplingres::text = 'Positive'
+               and s.samplingtype::text = 'RT-PCR') s1 on true
+          left join lateral
+          (select s.resultdt as resultdt
+             from wbk.wbkcase c
+               join wbk.wbkcase_people cp
+                 on c.id = cp.wbkcaseid
+               join wbk.people p
+                 on cp.peopleident = p.ident
+               join wbk.sampling s
+                 on p.ident = s.peopleident
+             where c.name = wbkcase.name
+               and s.wbkcaseid = c.id
+               and s.samplingres::text = 'Positive'
+               and s.samplingtype::text = 'RT-PCR'
+             order by resultdt desc
+               limit 1) s2 on true
+          left join lateral
+          (select count(p.ident) as numcc
+             from wbk.wbkcase c
+               join wbk.wbkcase_people cp
+                 on c.id = cp.wbkcaseid
+               join wbk.people p
+                 on cp.peopleident = p.ident
+               left join wbk.sampling s
+                 on p.ident = s.peopleident
+             where c.name = wbkcase.name
+               and s.wbkcaseid = c.id
+               and (select samplingres 
+                      from wbk.sampling
+                      where sampling.peopleident = cp.contactto
+                        and sampling.samplingres::text = 'Positive'
+                        and sampling.samplingtype::text = 'RT-PCR') is not null) s3 on true
+          left join lateral
+          (select c.name as clustername
+             from wbk.cluster c
+             where c.id = wbkcase.clusterid) s4 on true
+          where state=$1
+            and district=$2`    
+
+    rows, err := conn.Query(context.Background(), sql, 
+        clbd.State, clbd.District)
+    if err != nil {
+        return nil, err
+    }
+
+    var cases CasesListByDistrictOut
+    for rows.Next() {
+        var casename string 
+        var begindt string 
+        var numposcase int 
+        var resultdt string 
+        var numcc int 
+        var clustername string 
+
+        err = rows.Scan(&casename, &begindt, &numposcase,
+            &resultdt, &numcc, &clustername)
+        if err != nil {
+            return nil, err 
+        }
+        wbkcase := CaseOut{
+            Casename: casename,
+            BeginDt: begindt,
+            NumPosCase: numposcase,
+            ResultDt: resultdt,
+            NumCC: numcc,
+            Clustername: clustername, 
+        }
+        cases.Cases = append(cases.Cases, wbkcase)
+    }
+
+    if cases.Cases == nil || len(cases.Cases)==0 {
+        cases.GetStatus = "NOROWS"
+    }
+    outputJson, err := json.MarshalIndent(cases, "", "")
+    return outputJson, err
+}
+
+func GetCasesListByDistrictHandler(w http.ResponseWriter, r *http.Request) {
+    util.SetDefaultHeader(w)
+    if (r.Method == "OPTIONS") { return }
+    fmt.Println("[GetCasesListByDistrictHandler] request received")    
+
+    // VERIFY AUTH TOKEN
+    // authToken := strings.Split(r.Header.Get("Authorization"), " ")[1]
+    // if !auth.VerifyTokenHMAC(authToken) {
+    //     util.SendUnauthorizedStatus(w)
+    //     return
+    // }   
+
+    var clbd CasesListByDistrictIn
+    err := json.NewDecoder(r.Body).Decode(&clbd)
+    if err != nil {
+        util.SendInternalServerErrorStatus(w, err)
+        return
+    }
+    
+    db.CheckDbConn()
+    casesJson, err := GetCasesListByDistrict(db.Conn, clbd)
+    if err != nil {        
+        util.SendInternalServerErrorStatus(w, err)
+        return 
+    }
+    fmt.Printf("%s\n", casesJson)
+    fmt.Fprintf(w, "%s", casesJson)
 }

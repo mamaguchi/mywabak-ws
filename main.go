@@ -30,6 +30,9 @@ func main() {
 	http.HandleFunc("/hso/del", mywabak.DelHSOHandler)
 	http.HandleFunc("/staff/get", mywabak.GetStaffsByOrgHandler)
 	http.HandleFunc("/staff/assigned/get", mywabak.GetAssignedStaffsByOrgAndCaseHandler)
+	http.HandleFunc("/wbkcase/add", mywabak.AddWbkcaseHandler)
+	http.HandleFunc("/wbkcase/staff/assigned/set", mywabak.UpdateAssignedStaffsByCaseHandler)
+	http.HandleFunc("/wbkcases/district/get", mywabak.GetCasesListByDistrictHandler)
 	// ACD
 	http.HandleFunc("/acd/get", mywabak.GetACDListHandler)
 	http.HandleFunc("/acd/upsert", mywabak.UpsertACDHandler)

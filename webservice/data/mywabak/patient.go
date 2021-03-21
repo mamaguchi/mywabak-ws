@@ -1798,7 +1798,7 @@ func GetCasesListByDistrict(conn *pgxpool.Pool, clbd CasesListByDistrictIn) ([]b
         `select wbkcase.name, wbkcase.begindt::text, s1.numposcase, 
            coalesce(s2.resultdt::text, '') as resultdt, 
            s3.numcc, 
-           coalesce(s4.clustername, 'non-cluster') as clustername
+           coalesce(s4.clustername, '') as clustername
         from wbk.wbkcase wbkcase
           left join lateral
           (select count(p.ident) as numposcase
